@@ -1,5 +1,5 @@
 """
-Intake node: Traffic cop. Validates project path, nothing else.
+Intake node: Traffic cop. Validates project path and extracts bundle ID.
 Knows NOTHING about video production - that's the analyzer's job.
 """
 from typing import Optional
@@ -11,6 +11,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 
 from config import get_model
+from tools.xcode_tools import extract_project_info
 from .state import PipelineState
 from .session import get_session
 
@@ -24,6 +25,8 @@ class IntakeContext:
     def __init__(self):
         self.project_path: Optional[str] = None
         self.app_bundle_id: Optional[str] = None
+        self.url_schemes: list[str] = []
+        self.project_name: Optional[str] = None
         self.ready_to_proceed: bool = False
         self.needs_user_input: bool = False
         self.user_question: Optional[str] = None
@@ -60,27 +63,45 @@ def check_path_exists(path: str) -> str:
 
 
 @tool
-def confirm_project(project_path: str, app_bundle_id: str) -> str:
+def validate_xcode_project(project_path: str) -> str:
     """
-    Confirm the project is valid and proceed to analysis.
+    Validate an Xcode project and extract bundle ID programmatically.
+    
+    This REPLACES guessing - it reads the actual project files to get
+    the real bundle ID, URL schemes, and project name.
     
     Args:
-        project_path: Full path to Xcode project (expand ~ first)
-        app_bundle_id: Bundle ID like com.company.appname (infer from project name)
+        project_path: Path to .xcodeproj or directory containing it
     
     Returns:
-        Confirmation message
+        Project info including bundle_id, or error message
     """
     expanded = str(Path(project_path).expanduser())
     
     if not Path(expanded).exists():
-        return f"ERROR: Path does not exist: {expanded}. Ask the user for the correct path."
+        return f"ERROR: Path does not exist: {expanded}"
     
-    _ctx.project_path = expanded
-    _ctx.app_bundle_id = app_bundle_id
+    # Extract project info programmatically
+    info = extract_project_info(expanded)
+    
+    if info["error"] and not info["bundle_id"]:
+        return f"ERROR: {info['error']}"
+    
+    # Store in context
+    _ctx.project_path = info["xcodeproj_path"] or expanded
+    _ctx.app_bundle_id = info["bundle_id"]
+    _ctx.url_schemes = info["url_schemes"]
+    _ctx.project_name = info["project_name"]
     _ctx.ready_to_proceed = True
     
-    return f"Project confirmed: {expanded}. Ready for analysis."
+    # Build result message
+    result = f"✓ Project validated: {_ctx.project_name}\n"
+    result += f"  Bundle ID: {_ctx.app_bundle_id}\n"
+    if _ctx.url_schemes:
+        result += f"  URL schemes: {', '.join(_ctx.url_schemes)}\n"
+    result += f"  Path: {_ctx.project_path}"
+    
+    return result
 
 
 @tool
@@ -99,7 +120,7 @@ def request_user_input(question: str) -> str:
     return f"User input requested: {question}"
 
 
-TOOLS = [check_path_exists, confirm_project, request_user_input]
+TOOLS = [check_path_exists, validate_xcode_project, request_user_input]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -107,7 +128,7 @@ TOOLS = [check_path_exists, confirm_project, request_user_input]
 # ─────────────────────────────────────────────────────────────
 
 def intake_node(state: PipelineState) -> Command:
-    """Intake node: validates project path only."""
+    """Intake node: validates project path and extracts bundle ID."""
     reset_context()
     
     # Update session stage
@@ -124,7 +145,7 @@ def intake_node(state: PipelineState) -> Command:
         model=get_model(),
         tools=TOOLS,
         name="intake",
-        prompt=f"""You are a simple intake validator. Your ONLY job is to confirm we have a valid Xcode project path.
+        prompt=f"""You are a simple intake validator. Your ONLY job is to validate the Xcode project.
 
 USER REQUEST:
 {state['user_input']}
@@ -133,20 +154,18 @@ CURRENT INFO:
 {info_str}
 
 YOUR TOOLS:
-1. check_path_exists(path) - Verify a path exists
-2. confirm_project(path, bundle_id) - Confirm and proceed (call when path is valid)
-3. request_user_input(question) - Ask user for the project path if missing
+1. check_path_exists(path) - Verify a path exists (optional, for debugging)
+2. validate_xcode_project(path) - MAIN TOOL: validates project and extracts real bundle ID
+3. request_user_input(question) - Ask user if project path is missing/invalid
 
 YOUR JOB:
 1. Find the Xcode project path in the user's request
-2. If found, verify it exists with check_path_exists
-3. If valid, call confirm_project with the path and an inferred bundle_id
-4. If no path found or invalid, call request_user_input
+2. Call validate_xcode_project(path) - it extracts the REAL bundle ID from project files
+3. If no path found or validation fails, call request_user_input
 
-You don't need to understand video requirements - just validate the path.
-Infer bundle_id from project name (e.g., MyApp.xcodeproj → com.app.myapp)
+DO NOT guess the bundle ID - validate_xcode_project reads it from project.pbxproj.
 
-CRITICAL: Call either confirm_project OR request_user_input.""",
+CRITICAL: Call validate_xcode_project if you have a path, OR request_user_input if you don't.""",
     )
     
     agent.invoke({
@@ -169,6 +188,9 @@ CRITICAL: Call either confirm_project OR request_user_input.""",
     
     if _ctx.ready_to_proceed:
         print(f"✓ Intake complete: {_ctx.project_path}")
+        print(f"  Bundle ID: {_ctx.app_bundle_id}")
+        if _ctx.url_schemes:
+            print(f"  URL schemes: {_ctx.url_schemes}")
         
         # Update session with bundle ID
         session.app_bundle_id = _ctx.app_bundle_id
@@ -177,6 +199,7 @@ CRITICAL: Call either confirm_project OR request_user_input.""",
             update={
                 "project_path": _ctx.project_path,
                 "app_bundle_id": _ctx.app_bundle_id,
+                "url_schemes": _ctx.url_schemes,  # Pass to analyzer via state
                 "intake_complete": True,
                 "messages": [AIMessage(content="Intake complete.")]
             },

@@ -1,11 +1,28 @@
 """
-Main entry point. Single text input, human-in-the-loop when needed.
+StreamLine Video Pipeline - Main Entry Point
+
+Usage:
+    # Full pipeline (capture → edit → render)
+    python -m src.main
+    
+    # Capture only
+    python -m src.main --phase capture
+    
+    # Editor only (requires completed capture)
+    python -m src.main --phase editor --project-id <uuid>
+    
+    # Editor test mode (mock data, no DB)
+    python -m src.main --phase editor --test
+    
+    # Skip rendering
+    python -m src.main --no-render
 
 Handles graceful shutdown on Ctrl+C with optional database cleanup.
 """
 import sys
 import signal
 import atexit
+import argparse
 from typing import Optional
 
 from orchestrator import run_pipeline, get_session, end_session
@@ -14,10 +31,10 @@ from db.supabase_client import cleanup_session
 
 BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
-║           PRODUCT VIDEO PIPELINE                             ║
+║           STREAMLINE VIDEO PIPELINE                          ║
 ║                                                              ║
 ║   Describe your app and desired video.                       ║
-║   I'll capture assets and (soon) generate the video.         ║
+║   I'll capture assets and generate the video.                ║
 ║                                                              ║
 ║   Press Ctrl+C to stop gracefully.                           ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -32,17 +49,9 @@ _shutdown_in_progress = False
 
 
 def handle_shutdown(signum: Optional[int] = None, frame=None) -> None:
-    """
-    Handle Ctrl+C (SIGINT) gracefully.
-    
-    1. Stop the pipeline
-    2. Show what was created
-    3. Ask user if they want to clean up
-    4. Clean up if requested
-    """
+    """Handle Ctrl+C (SIGINT) gracefully."""
     global _shutdown_in_progress
     
-    # Prevent multiple handlers
     if _shutdown_in_progress:
         print("\n\n⚠️  Force quit. Some records may remain in database.")
         sys.exit(1)
@@ -57,7 +66,6 @@ def handle_shutdown(signum: Optional[int] = None, frame=None) -> None:
     session = get_session()
     session.was_interrupted = True
     
-    # Show session summary
     summary = session.get_summary()
     
     print(f"\nSession Status:")
@@ -67,17 +75,10 @@ def handle_shutdown(signum: Optional[int] = None, frame=None) -> None:
     print(f"  Tasks Completed: {summary['completed_tasks']}")
     print(f"  Tasks Pending: {summary['pending_tasks']}")
     
-    # Only ask about cleanup if there's something to clean
     if summary['video_project_id'] or summary['total_tasks'] > 0:
         print(f"\n" + "-" * 60)
         print("DATABASE CLEANUP")
         print("-" * 60)
-        print(f"\nRecords created this session:")
-        if summary['video_project_id']:
-            print(f"  • 1 video_project record")
-        if summary['total_tasks'] > 0:
-            print(f"  • {summary['total_tasks']} capture_task records")
-        
         print(f"\nOptions:")
         print(f"  [d] Delete all records from this session")
         print(f"  [k] Keep records (can resume or inspect later)")
@@ -117,35 +118,24 @@ def handle_shutdown(signum: Optional[int] = None, frame=None) -> None:
 
 def setup_signal_handlers() -> None:
     """Set up signal handlers for graceful shutdown."""
-    # Handle Ctrl+C
     signal.signal(signal.SIGINT, handle_shutdown)
-    
-    # Handle terminal close (SIGHUP) on Unix
     if hasattr(signal, 'SIGHUP'):
         signal.signal(signal.SIGHUP, handle_shutdown)
-    
-    # Handle termination request (SIGTERM)
     signal.signal(signal.SIGTERM, handle_shutdown)
-    
-    # Register cleanup on normal exit too
     atexit.register(lambda: end_session())
 
 
 # ─────────────────────────────────────────────────────────────
-# Main Entry Points
+# Phase Runners
 # ─────────────────────────────────────────────────────────────
 
-def main():
-    """Interactive entry point."""
-    setup_signal_handlers()
-    
-    print(BANNER)
-    
+def get_user_input() -> str:
+    """Interactive prompt for user input."""
     print("Describe your project and what kind of video you want:")
     print("(Include: project path, what the app does, video goals)")
+    print("(Press Enter twice when done)")
     print()
     
-    # Handle multi-line input
     lines = []
     print("> ", end="", flush=True)
     
@@ -161,42 +151,200 @@ def main():
     except EOFError:
         pass
     except KeyboardInterrupt:
-        # Ctrl+C during input - just exit cleanly
         print("\n\nCancelled.")
         sys.exit(0)
     
-    user_input = "\n".join(lines).strip()
+    return "\n".join(lines).strip()
+
+
+def run_capture_phase(user_input: str) -> dict:
+    """Run capture phase only."""
+    print("\n" + "="*60)
+    print("Phase: CAPTURE")
+    print("="*60)
     
-    if not user_input:
-        print("No input provided. Exiting.")
-        return
+    result = run_pipeline(user_input)
     
-    print()
-    print("-" * 60)
-    print()
+    session = get_session()
+    if not session.was_interrupted:
+        print("\n✅ Capture phase completed!")
+        if result.get("video_project_id"):
+            print(f"\n📋 To continue with editing:")
+            print(f"   python -m src.main --phase editor --project-id {result['video_project_id']}")
+    
+    return result
+
+
+def run_editor_phase(project_id: str = None, test_mode: bool = False, include_render: bool = True) -> dict:
+    """Run editor phase only."""
+    from editor import run_editor_standalone, run_editor_test, create_test_state
+    
+    print("\n" + "="*60)
+    print("Phase: EDITOR" + (" (TEST MODE)" if test_mode else ""))
+    print("="*60)
+    
+    if test_mode:
+        print("\n🧪 Running with test data (no database)...")
+        result = run_editor_test(include_render=include_render)
+    else:
+        if not project_id:
+            print("Error: --project-id required for editor phase")
+            print("       Or use --test for test mode")
+            sys.exit(1)
+        
+        print(f"\n📂 Loading project: {project_id}")
+        result = run_editor_standalone(project_id, include_render=include_render)
+    
+    print("\n✅ Editor phase completed!")
+    
+    if result.get("render_path"):
+        print(f"   Output: {result['render_path']}")
+    elif result.get("video_spec"):
+        print(f"   VideoSpec created (render {'skipped' if not include_render else 'failed'})")
+    
+    return result
+
+
+def run_full_pipeline_interactive(user_input: str, include_render: bool = True) -> dict:
+    """Run complete pipeline."""
+    from pipeline import run_full_pipeline
+    
+    return run_full_pipeline(user_input, include_render=include_render)
+
+
+# ─────────────────────────────────────────────────────────────
+# Main Entry Point
+# ─────────────────────────────────────────────────────────────
+
+def main():
+    """Main entry point with CLI argument parsing."""
+    parser = argparse.ArgumentParser(
+        description="StreamLine Video Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Interactive full pipeline
+  python -m src.main
+  
+  # Capture phase only
+  python -m src.main --phase capture
+  
+  # Editor phase (from completed capture)
+  python -m src.main --phase editor --project-id abc-123
+  
+  # Editor test mode
+  python -m src.main --phase editor --test
+  
+  # Full pipeline without rendering
+  python -m src.main --no-render
+  
+  # Non-interactive with input string
+  python -m src.main --input "30s promo for FocusFlow at ~/Code/FocusFlow"
+        """
+    )
+    
+    parser.add_argument(
+        "--phase",
+        choices=["capture", "editor", "full"],
+        default="full",
+        help="Which phase to run (default: full)"
+    )
+    
+    parser.add_argument(
+        "--project-id",
+        help="Project UUID (required for editor phase)"
+    )
+    
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run with test data (no database required)"
+    )
+    
+    parser.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Skip the Remotion render step"
+    )
+    
+    parser.add_argument(
+        "--input",
+        help="User input string (skips interactive prompt)"
+    )
+    
+    args = parser.parse_args()
+    
+    setup_signal_handlers()
     
     try:
-        result = run_pipeline(user_input)
+        # ─────────────────────────────────────────────────────
+        # Editor Phase
+        # ─────────────────────────────────────────────────────
+        if args.phase == "editor":
+            run_editor_phase(
+                project_id=args.project_id,
+                test_mode=args.test,
+                include_render=not args.no_render,
+            )
         
-        # Normal completion
-        session = get_session()
-        if not session.was_interrupted:
-            print("\n✅ Pipeline completed successfully!")
+        # ─────────────────────────────────────────────────────
+        # Capture Phase
+        # ─────────────────────────────────────────────────────
+        elif args.phase == "capture":
+            print(BANNER)
+            user_input = args.input or get_user_input()
+            
+            if not user_input:
+                print("No input provided. Exiting.")
+                return
+            
+            run_capture_phase(user_input)
         
+        # ─────────────────────────────────────────────────────
+        # Full Pipeline
+        # ─────────────────────────────────────────────────────
+        else:
+            print(BANNER)
+            user_input = args.input or get_user_input()
+            
+            if not user_input:
+                print("No input provided. Exiting.")
+                return
+            
+            run_full_pipeline_interactive(
+                user_input,
+                include_render=not args.no_render,
+            )
+    
     except Exception as e:
-        print(f"\n❌ Pipeline error: {e}")
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
         handle_shutdown()
 
 
-def run_from_string(user_input: str) -> dict:
+def run_from_string(user_input: str, phase: str = "full", include_render: bool = True) -> dict:
     """
     Programmatic entry point.
     
-    Note: Signal handlers are set up, but Ctrl+C behavior may vary
-    depending on the calling context.
+    Args:
+        user_input: Description of app and video
+        phase: "capture", "editor", or "full"
+        include_render: Whether to render the video
+    
+    Returns:
+        Final pipeline state
     """
     setup_signal_handlers()
-    return run_pipeline(user_input)
+    
+    if phase == "capture":
+        return run_capture_phase(user_input)
+    elif phase == "editor":
+        # For editor, user_input is actually the project_id
+        return run_editor_phase(project_id=user_input, include_render=include_render)
+    else:
+        from pipeline import run_full_pipeline
+        return run_full_pipeline(user_input, include_render=include_render)
 
 
 if __name__ == "__main__":

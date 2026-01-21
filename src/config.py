@@ -33,6 +33,9 @@ class Config:
     DEFAULT_RECORDING_DURATION = 8
     MODEL_NAME = "gemini-3-flash-preview"
     
+    # Debug mode - set DEBUG=1 in env to enable verbose logging
+    DEBUG = os.getenv("DEBUG", "").lower() in ("1", "true", "yes")
+    
     @classmethod
     def get_supabase_key(cls, elevated: bool = True) -> str:
         """
