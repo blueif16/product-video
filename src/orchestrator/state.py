@@ -12,6 +12,10 @@ class PipelineState(TypedDict):
     app_bundle_id: Optional[str]         # For DB queries
     video_project_id: Optional[str]      # Created by analyzer
     intake_complete: bool
+    # Sequential capture state
+    pending_task_ids: Optional[list[str]]   # Tasks waiting to be captured
+    current_task_index: Optional[int]       # Index of current task being processed
+    completed_task_ids: Optional[list[str]] # Successfully completed tasks
 
 
 class CaptureTaskState(TypedDict):

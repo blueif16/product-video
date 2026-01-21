@@ -10,8 +10,9 @@ from langgraph.types import interrupt, Command
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 
-from src.config import get_model
+from config import get_model
 from .state import PipelineState
+from .session import get_session
 
 
 # ─────────────────────────────────────────────────────────────
@@ -109,6 +110,10 @@ def intake_node(state: PipelineState) -> Command:
     """Intake node: validates project path only."""
     reset_context()
     
+    # Update session stage
+    session = get_session()
+    session.current_stage = "intake"
+    
     # Build minimal context
     current_info = []
     if state.get("project_path"):
@@ -164,6 +169,10 @@ CRITICAL: Call either confirm_project OR request_user_input.""",
     
     if _ctx.ready_to_proceed:
         print(f"✓ Intake complete: {_ctx.project_path}")
+        
+        # Update session with bundle ID
+        session.app_bundle_id = _ctx.app_bundle_id
+        
         return Command(
             update={
                 "project_path": _ctx.project_path,

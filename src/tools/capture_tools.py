@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 from datetime import datetime
-from src.config import Config
+from config import Config
 
 
 def _get_output_path(capture_type: str, name: str) -> Path:

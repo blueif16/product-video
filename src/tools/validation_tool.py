@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 import subprocess
 import base64
 from pathlib import Path
-from src.config import get_model
+from config import get_model
 
 
 def _encode_image(image_path: Path) -> str:

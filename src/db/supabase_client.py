@@ -7,7 +7,7 @@ API Key Usage:
 - For RLS-respecting operations, pass elevated=False to get_supabase()
 """
 from supabase import create_client, Client
-from src.config import Config
+from config import Config
 from typing import Optional
 
 
@@ -66,6 +66,17 @@ def get_video_project(project_id: str) -> Optional[dict]:
     db = get_supabase()
     result = db.table("video_projects").select("*").eq("id", project_id).single().execute()
     return result.data
+
+
+def delete_video_project(project_id: str) -> bool:
+    """Delete a video project by ID. Returns True if deleted."""
+    try:
+        db = get_supabase()
+        db.table("video_projects").delete().eq("id", project_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error deleting video project: {e}")
+        return False
 
 
 # ─────────────────────────────────────────────────────────────
@@ -148,3 +159,70 @@ def get_all_tasks(app_bundle_id: str) -> list[dict]:
         "app_bundle_id", app_bundle_id
     ).execute()
     return result.data
+
+
+def delete_task(task_id: str) -> bool:
+    """Delete a capture task by ID. Returns True if deleted."""
+    try:
+        db = get_supabase()
+        db.table("capture_tasks").delete().eq("id", task_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error deleting task: {e}")
+        return False
+
+
+def delete_tasks_by_ids(task_ids: list[str]) -> int:
+    """Delete multiple capture tasks by IDs. Returns count deleted."""
+    if not task_ids:
+        return 0
+    try:
+        db = get_supabase()
+        db.table("capture_tasks").delete().in_("id", task_ids).execute()
+        return len(task_ids)
+    except Exception as e:
+        print(f"Error deleting tasks: {e}")
+        return 0
+
+
+def delete_tasks_by_bundle_id(app_bundle_id: str) -> int:
+    """Delete all capture tasks for an app. Returns count deleted."""
+    try:
+        db = get_supabase()
+        # First get count
+        tasks = get_all_tasks(app_bundle_id)
+        count = len(tasks)
+        if count > 0:
+            db.table("capture_tasks").delete().eq("app_bundle_id", app_bundle_id).execute()
+        return count
+    except Exception as e:
+        print(f"Error deleting tasks: {e}")
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────
+# Session Cleanup (for graceful shutdown)
+# ─────────────────────────────────────────────────────────────
+
+def cleanup_session(video_project_id: Optional[str], task_ids: list[str]) -> dict:
+    """
+    Clean up all records created during a session.
+    
+    Args:
+        video_project_id: The video project to delete (if any)
+        task_ids: List of task IDs to delete
+    
+    Returns:
+        Dict with counts of deleted records
+    """
+    deleted = {"video_project": False, "tasks": 0}
+    
+    # Delete tasks first (might have foreign key constraints)
+    if task_ids:
+        deleted["tasks"] = delete_tasks_by_ids(task_ids)
+    
+    # Delete video project
+    if video_project_id:
+        deleted["video_project"] = delete_video_project(video_project_id)
+    
+    return deleted
