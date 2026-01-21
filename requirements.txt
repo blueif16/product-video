@@ -1,7 +1,9 @@
 # Core
-langgraph>=0.2.0
+langgraph>=0.3.0
+langgraph-prebuilt>=0.1.0
 langchain>=0.3.0
-langchain-google-genai>=2.0.0
+langchain-core>=0.3.0
+langchain-google-genai>=4.2.0
 
 # Database
 supabase>=2.0.0

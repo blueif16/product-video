@@ -11,8 +11,8 @@ This agent:
 4. Creates tasks in Supabase (text descriptions, not rigid schemas)
 """
 from langgraph.prebuilt import create_react_agent
-from src.config import get_model
-from src.tools import ANALYZER_TOOLS
+from config import get_model
+from tools import ANALYZER_TOOLS
 
 
 ANALYZER_SYSTEM_PROMPT = """You are an expert iOS developer and video producer. Your job is to analyze an Xcode project and identify what's worth capturing for a product video.

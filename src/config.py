@@ -31,7 +31,7 @@ class Config:
     CAPTURES_OUTPUT_DIR = Path(os.getenv("CAPTURES_OUTPUT_DIR", "/tmp/productvideo_captures"))
     MAX_CAPTURE_ATTEMPTS = 5
     DEFAULT_RECORDING_DURATION = 8
-    MODEL_NAME = "gemini-2.5-flash-preview-05-20"
+    MODEL_NAME = "gemini-3-flash-preview"
     
     @classmethod
     def get_supabase_key(cls, elevated: bool = True) -> str:
@@ -86,4 +86,6 @@ def get_model() -> ChatGoogleGenerativeAI:
         model=Config.MODEL_NAME,
         google_api_key=Config.GEMINI_API_KEY,
         temperature=0,
+        # Required for Gemini 3 models - preserves thought signatures during tool calls
+        include_thoughts=True,
     )

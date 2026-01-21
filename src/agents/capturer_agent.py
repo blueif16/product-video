@@ -7,8 +7,8 @@ validates the result. Retries up to MAX_ATTEMPTS with different strategies.
 This agent receives a task_id, fetches details from Supabase, and works independently.
 """
 from langgraph.prebuilt import create_react_agent
-from src.config import get_model, Config
-from src.tools import CAPTURER_TOOLS
+from config import get_model, Config
+from tools import CAPTURER_TOOLS
 
 
 CAPTURER_SYSTEM_PROMPT = """You are an expert at capturing iOS app screenshots and recordings for marketing videos.

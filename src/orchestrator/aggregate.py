@@ -3,13 +3,17 @@ Aggregate node: Collect results, update status to 'aggregated'.
 """
 from langchain_core.messages import AIMessage
 
-from src.config import Config
-from src.db.supabase_client import get_all_tasks, update_video_project_status
+from config import Config
+from db.supabase_client import get_all_tasks, update_video_project_status
 from .state import PipelineState
+from .session import get_session
 
 
 def aggregate_node(state: PipelineState) -> dict:
     """Aggregate capture results and update project status."""
+    session = get_session()
+    session.current_stage = "aggregating"
+    
     app_bundle_id = state.get("app_bundle_id", "com.app.unknown")
     
     all_tasks = get_all_tasks(app_bundle_id)

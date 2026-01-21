@@ -14,10 +14,11 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 
-from src.config import get_model
-from src.tools import ANALYZER_TOOLS
-from src.db.supabase_client import create_task, create_video_project
+from config import get_model
+from tools import ANALYZER_TOOLS
+from db.supabase_client import create_task, create_video_project
 from .state import PipelineState
+from .session import get_session
 
 
 # ─────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ class AnalyzerContext:
     def __init__(self):
         self.analysis_summary: Optional[str] = None
         self.tasks_created: int = 0
+        self.task_ids: list[str] = []
 
 _ctx = AnalyzerContext()
 
@@ -65,6 +67,12 @@ def create_tools(app_bundle_id: str):
             capture_type=ctype
         )
         _ctx.tasks_created += 1
+        _ctx.task_ids.append(task_id)
+        
+        # Track in session for cleanup on interrupt
+        session = get_session()
+        session.add_task(task_id)
+        
         return f"Created {ctype} task #{_ctx.tasks_created}: {task_id[:8]}..."
     
     @tool
@@ -100,7 +108,13 @@ def analyze_and_plan_node(state: PipelineState) -> dict:
     reset_context()
     print(f"\n🔍 Analyzing project...")
     
+    # Update session state
+    session = get_session()
+    session.current_stage = "analyzing"
+    
     app_bundle_id = state.get("app_bundle_id", "com.app.unknown")
+    session.app_bundle_id = app_bundle_id
+    
     tools = ANALYZER_TOOLS + create_tools(app_bundle_id)
     
     agent = create_react_agent(
@@ -154,6 +168,9 @@ Start by exploring the project structure.""",
             app_bundle_id=app_bundle_id,
             analysis_summary=_ctx.analysis_summary
         )
+        # Track in session
+        session.video_project_id = video_project_id
+        
         print(f"✓ Analysis complete: {_ctx.tasks_created} tasks, project {video_project_id[:8]}...")
     else:
         print(f"⚠️  Analysis complete but no summary finalized")
