@@ -10,8 +10,15 @@ from langchain_core.messages import HumanMessage
 import subprocess
 import base64
 import json
+import os
 from pathlib import Path
 from config import get_model
+
+
+# Suppress MallocStackLogging warnings from child processes (FFmpeg, ffprobe)
+_SUBPROCESS_ENV = os.environ.copy()
+_SUBPROCESS_ENV["MallocStackLogging"] = "0"
+_SUBPROCESS_ENV["MallocStackLoggingNoCompact"] = "0"
 
 
 def _encode_image(image_path: Path) -> str:
@@ -64,30 +71,60 @@ def _extract_frames_from_video(video_path: Path, timestamps_ms: list[int] = None
     Extract frames from video at specified timestamps.
     If no timestamps, extracts at 1fps for coverage.
     """
+    import time as time_module
+    
+    # Ensure video file is fully written before attempting extraction
+    time_module.sleep(0.5)
+    
+    # Verify video file exists and has content
+    if not video_path.exists():
+        return []
+    
+    file_size = video_path.stat().st_size
+    if file_size < 1000:  # Less than 1KB is likely corrupt
+        return []
+    
     output_dir = video_path.parent / f"{video_path.stem}_frames"
     output_dir.mkdir(exist_ok=True)
     
     extracted = []
     
+    # First, verify the video is readable with ffprobe
+    probe_result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", 
+         "-show_entries", "stream=duration,nb_frames", "-of", "csv=p=0", str(video_path)],
+        capture_output=True, timeout=10, env=_SUBPROCESS_ENV
+    )
+    if probe_result.returncode != 0:
+        # Video might be corrupt or not finalized
+        return []
+    
     if timestamps_ms:
         for i, ts in enumerate(timestamps_ms):
             seconds = ts / 1000
             output_path = output_dir / f"frame_{i:03d}_{ts}ms.png"
-            subprocess.run([
+            result = subprocess.run([
                 "ffmpeg", "-y", "-ss", str(seconds),
                 "-i", str(video_path),
                 "-frames:v", "1",
+                "-q:v", "2",  # High quality
                 str(output_path)
-            ], capture_output=True, timeout=30)
-            if output_path.exists():
+            ], capture_output=True, timeout=30, env=_SUBPROCESS_ENV)
+            if output_path.exists() and output_path.stat().st_size > 0:
                 extracted.append(output_path)
     else:
-        subprocess.run([
+        # Extract at 1fps - use slower but more reliable method
+        result = subprocess.run([
             "ffmpeg", "-y", "-i", str(video_path),
             "-vf", "fps=1",
+            "-q:v", "2",  # High quality
             str(output_dir / "frame_%03d.png")
-        ], capture_output=True, timeout=60)
-        extracted = sorted(output_dir.glob("frame_*.png"))
+        ], capture_output=True, timeout=60, env=_SUBPROCESS_ENV)
+        
+        # Only include frames that actually have content
+        for frame_path in sorted(output_dir.glob("frame_*.png")):
+            if frame_path.stat().st_size > 0:
+                extracted.append(frame_path)
     
     return extracted
 
@@ -266,7 +303,7 @@ def verify_screen(expected_screen: str, expected_description: str) -> str:
     
     result = subprocess.run(
         ["xcrun", "simctl", "io", "booted", "screenshot", temp_path],
-        capture_output=True, timeout=10
+        capture_output=True, timeout=10, env=_SUBPROCESS_ENV
     )
     
     if result.returncode != 0:
@@ -300,7 +337,20 @@ Respond in ONE line:
         ]
         
         response = model.invoke([HumanMessage(content=content)])
-        return response.content.strip()
+        
+        # Handle both string and list response content (Gemini with include_thoughts=True returns list)
+        response_content = response.content
+        if isinstance(response_content, list):
+            # Extract text from content blocks
+            text_parts = []
+            for block in response_content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            response_content = "\n".join(text_parts)
+        
+        return response_content.strip() if response_content else "ERROR: Empty response from model"
         
     finally:
         temp_file.unlink(missing_ok=True)

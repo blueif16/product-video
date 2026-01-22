@@ -10,144 +10,182 @@ The planner's job is to:
 2. Design the pacing and flow of the video
 3. Write rich creative direction for each moment
 """
+from typing import Annotated
+from typing_extensions import TypedDict
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
+from langgraph.graph.message import add_messages
 
 from config import Config
 from tools.editor_tools import create_clip_task, finalize_edit_plan
 
 
 # ─────────────────────────────────────────────────────────────
+# Custom State Schema for InjectedState
+# ─────────────────────────────────────────────────────────────
+
+class PlannerAgentState(TypedDict):
+    """
+    Extended state schema for the planner agent.
+    
+    This allows tools using InjectedState to access video_project_id.
+    The messages field uses add_messages reducer (required by create_react_agent).
+    remaining_steps is required by create_react_agent for iteration control.
+    """
+    messages: Annotated[list, add_messages]
+    remaining_steps: int  # Required by create_react_agent
+    video_project_id: str
+
+
+# ─────────────────────────────────────────────────────────────
 # Planner Prompt
 # ─────────────────────────────────────────────────────────────
 
-PLANNER_SYSTEM_PROMPT = """You are a creative director designing a modern product video.
+PLANNER_SYSTEM_PROMPT = """You design video timelines. Create clips with specific text, sizes, and animations.
 
-## Your Context
+## ENERGY
 
-**User's Vision:**
-{user_input}
+This is a Product Hunt video. Every clip PUNCHES. It's a highlight reel, not a story.
+Cut BEFORE the viewer gets comfortable. If it feels calm, make it faster.
 
-**Analysis (what we know about the app):**
-{analysis_summary}
+## Context
 
-**Available Assets:**
-{assets_description}
+**User Input:** {user_input}
+**Analysis:** {analysis_summary}
+**Assets:** {assets_description}
 
-## Your Mission
+## TIMING
 
-Design a compelling video timeline by creating "moments" (clip_tasks).
+| Type | Duration |
+|------|----------|
+| Single word | 0.4-0.6s |
+| Phrase (2-4 words) | 0.6-1.0s |
+| Screenshot + text | 0.8-1.2s |
+| Hero/brand | 1.2-1.8s |
 
-Each moment is a creative unit that can have:
-- The original screenshot/recording
-- AI-enhanced visual versions (the composer can generate these)
-- Text overlays
-- Transitions between visual states
+Max: 2 seconds per clip. Target: 1.3 clips per second.
 
-Your job is to DESCRIBE what each moment should feel like.
-The composer will figure out HOW to achieve it technically.
+## TEXT SIZES
 
-## Modern Product Video Philosophy
+| Type | Size |
+|------|------|
+| Hero word | 160px |
+| Brand name | 140px |
+| Key phrase | 90px |
+| Supporting | 60px |
 
-- Visual rhythm over narrative structure
-- Rapid sequences with breathing room
-- Creative freedom (not rigid hook/demo/CTA)
-- Layers of visual interest
-- Moments that transform (plain → enhanced → text)
-
-## Example Creative Thinking
-
-"I'll open with the dashboard, but make it MAGICAL. Start plain, then have it
-transform with a glowing AI-enhanced version. 'FOCUS' text types in dramatically.
-Slow zoom to the task counter. This is the hero moment - needs to feel premium."
-
-"Quick feature flash - swipe gesture recording. Keep it raw and energetic.
-Add bold 'SWIPE' text that slides with the motion. No fancy enhancements here,
-just pure speed and satisfaction."
-
-"Transition moment - use an AI-generated abstract gradient background.
-No screenshot, just a beautiful transition visual. 'NEVER FORGET' fades in
-centered. Brief pause before the next feature."
-
-## Tool: create_clip_task
+## TOOL
 
 ```
-create_clip_task(
-    asset_path,      # Path to screenshot/recording (or "none" for generated-only moments)
-    start_time_s,    # When this moment starts
-    duration_s,      # How long it lasts
-    composer_notes   # YOUR FULL CREATIVE VISION
-)
+create_clip_task(asset_path, start_time_s, duration_s, composer_notes)
 ```
 
-### Composer Notes - Be Rich and Descriptive!
+asset_path: Screenshot path or "none://text-only"
 
-The composer reads your notes and decides what layers to create.
-Tell them EVERYTHING about your vision:
+## COMPOSER NOTES FORMAT
 
-**Good notes (rich creative intent):**
+Write exactly what to render. Include:
+- Text content in quotes
+- Size in px
+- Animation type + duration in frames
+- Position (ALWAYS use preset "center" for centered text, NEVER use custom x/y)
+- Background color (for text-only)
 
-"Hero moment - make this MAGICAL. Start with the plain dashboard screenshot,
-hold for 0.3s, then crossfade to an AI-enhanced version with subtle purple/blue
-glow effects around the UI elements. Add 'NEVER FORGET' text that types in
-character by character starting at 0.5s - big, bold, white, center of screen.
-Slow zoom towards the task counter in the upper right. Premium, confident energy.
-This is the 'aha' moment."
+**Single word (0.5s):**
+```
+Text: "FAST" 160px white centered
+Animation: scale 6 frames, feel: snappy
+Background: #0a0a0f
+Exit: none (hard cut)
+```
 
-"Quick action flash - energetic montage feel. Use the swipe recording as-is,
-but add 'COMPLETE' text that slides in from the right in sync with the gesture.
-Fast, punchy. Maybe slight zoom in. No need for AI enhancement here - the
-motion of the gesture IS the visual interest."
+**Two lines staggered (0.9s):**
+```
+Line 1: "From idea" 80px white, preset center with y=42%, frame 0
+Line 2: "to launch." 80px #a5b4fc, preset center with y=58%, frame 10
+Animation: fade 6 frames each, feel: smooth
+Background: #0f172a
+Exit: fade 4 frames
+```
 
-"Breathing room - pure visual moment. Generate a beautiful abstract gradient
-background (purples and teals, flowing). No screenshot. Just atmosphere.
-'Simple. Powerful.' fades in at center. Brief pause. Sets up the next feature."
+**Bilingual text (elegant, calm):**
+```
+English: "Your Daily Guide" 72px #78350f, preset center with y=45%
+Chinese: "每日指南" 64px #f59e0b, preset center with y=55%
+Animation: fade 12 frames, feel: smooth
+Background: gradient #fef3c7 → #fde68a
+Exit: fade 8 frames
+```
 
-**Bad notes (too sparse):**
+**Screenshot + overlay (0.8s):**
+```
+Image: dashboard.png, iPhone frame
+Zoom: 1.0→1.06
+Text: "ORGANIZE" 90px white bottom-center
+Text animation: slide_up 8 frames
+```
 
-"Zoom in on dashboard" — no feel, no layers, no vision
-"Show the app" — doesn't inspire composition
-"Add title" — which title? what style? where? when?
+**Typewriter hero (1.5s):**
+```
+Text: "STREAMLINE" 180px white centered
+Animation: typewriter 2 frames/char
+Background: #030712 with purple orbs
+```
 
-## Important
+## 10-SECOND EXAMPLE
 
-- Each moment is self-contained (has its own layers)
-- You CAN have moments with no screenshot (generated visuals only)
-- Text is PART of the moment, not separate
-- Think about TRANSFORMATIONS within moments (plain → enhanced)
-- DON'T worry about music (music comes later, adapts to you)
-- DO think about visual rhythm and pacing
-- DO be specific about the FEEL of each moment
+```
+0.0-0.5s: "BUILD" 160px scale center
+0.5-1.0s: "SHIP" 160px scale center  
+1.0-1.5s: "GROW" 160px scale center
+1.5-2.3s: "The fastest way" 70px fade
+2.3-3.0s: "to launch" 70px fade
+3.0-3.7s: "Zero config" 90px slide_up
+3.7-4.4s: "Zero friction" 90px slide_up
+4.4-5.1s: "Zero waiting" 90px slide_up
+5.1-6.2s: "From commit to production" 60px
+6.2-7.0s: "in seconds." 100px scale
+7.0-8.3s: "STREAMLINE" 180px typewriter
+8.3-10.0s: "Start free →" 90px fade
+```
 
-## Timeline Planning Tips
+12 clips. Each has: text, size, animation, timing.
 
-- Hero moments: 2-4 seconds (let them breathe)
-- Feature flashes: 0.8-1.5 seconds (quick hits)
-- Transition/breathing: 0.5-1 second (visual palette cleanser)
-- Consider starting with impact, building rhythm, ending with CTA
+## RULES
 
-Design the video, create the tasks, then finalize.
+1. No clip > 2 seconds
+2. Every note has: text + size + animation + position
+3. Hero text ≥ 140px
+4. Phrase text ≥ 70px
+5. First clip is a PUNCH (single big word, scale animation)
+6. Last clip is CTA or brand
+7. Prefer hard cuts (exit: none) over fade-outs for energy
+
+Create clips now. Then call finalize_edit_plan.
 """
 
 
 def format_assets_for_prompt(assets: list[dict]) -> str:
     """Format assets list for the planner prompt."""
     if not assets:
-        return "No assets available - you can create moments with AI-generated visuals only."
+        return (
+            "**No assets available** - This is a TEXT-ONLY video.\n\n"
+            "Create moments using:\n"
+            "- Background layers (gradients, animated orbs)\n"
+            "- Text layers with dramatic animations\n"
+            "- Use asset_path='none://text-only' for all clips\n\n"
+            "Focus on typography, visual rhythm, and the user's messaging."
+        )
     
     lines = []
     for i, asset in enumerate(assets, 1):
-        capture_type = asset.get("capture_type", "unknown")
-        emoji = "📸" if capture_type == "screenshot" else "🎬"
         path = asset.get("path", "unknown")
         description = asset.get("description", 'No description')
-        validation = asset.get("validation_notes", 'N/A')
         
-        lines.append(
-            f"{i}. {emoji} `{path}`\n"
-            f"   {description}\n"
-            f"   Quality: {validation}"
-        )
+        # Description now includes [dimensions, type] suffix
+        lines.append(f"{i}. `{path}`\n   {description}")
+    
     return "\n".join(lines)
 
 
@@ -156,9 +194,14 @@ def format_assets_for_prompt(assets: list[dict]) -> str:
 # ─────────────────────────────────────────────────────────────
 
 def create_planner_agent():
-    """Create the edit planner React agent."""
+    """
+    Create the edit planner React agent with custom state schema.
+    
+    Uses PlannerAgentState to make video_project_id available to tools
+    via InjectedState annotation.
+    """
     model = ChatGoogleGenerativeAI(
-        model=Config.GEMINI_MODEL,
+        model=Config.MODEL_NAME,
         google_api_key=Config.GEMINI_API_KEY,
         temperature=0.7,  # More creative
     )
@@ -172,6 +215,7 @@ def create_planner_agent():
         model=model,
         tools=tools,
         name="edit_planner",
+        state_schema=PlannerAgentState,  # Custom schema with video_project_id
     )
 
 
@@ -199,6 +243,10 @@ def edit_planner_node(state: dict) -> dict:
     # Format the prompt
     assets_description = format_assets_for_prompt(assets)
     
+    # Note if text-only
+    if not assets:
+        print("   ℹ️  Text-only mode (no captured assets)")
+    
     system_prompt = PLANNER_SYSTEM_PROMPT.format(
         user_input=user_input,
         analysis_summary=analysis_summary,
@@ -208,10 +256,14 @@ def edit_planner_node(state: dict) -> dict:
     # Create and run agent
     agent = create_planner_agent()
     
+    # IMPORTANT: Pass state keys that tools need via InjectedState
+    # The agent invocation needs access to video_project_id for tools to work
     result = agent.invoke({
         "messages": [
             HumanMessage(content=system_prompt + "\n\nDesign the video now. Create your moments (clip_tasks), then finalize the plan.")
         ],
+        # State keys required by tools (InjectedState)
+        "video_project_id": video_project_id,
     })
     
     # Get created task IDs from DB

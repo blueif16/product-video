@@ -1,8 +1,11 @@
 -- Editor Phase Tables
 -- Run after 001_initial_schema.sql
+--
+-- NOTE: text_tasks table was removed in the simplification.
+-- Text overlays are now layers inside clip_tasks, not separate entities.
 
 -- ─────────────────────────────────────────────────────────────
--- Clip Tasks: What the planner wants (creative intent)
+-- Clip Tasks: "Moments" in the video timeline
 -- ─────────────────────────────────────────────────────────────
 create table clip_tasks (
     id uuid primary key default gen_random_uuid(),
@@ -17,40 +20,17 @@ create table clip_tasks (
     duration_s float not null,
     
     -- The planner's creative vision - THIS IS THE KEY FIELD
-    -- No constraints, no rigid structure, just pure creative intent
-    -- Example: "Zoom slowly to task counter, calm confident energy, 
-    --           this is where user sees the power of the app"
+    -- Rich creative direction, no rigid structure
+    -- Example: "Zoom slowly to task counter, add 'FOCUS' text that types in,
+    --           calm confident energy, crossfade to glowing AI version"
     composer_notes text not null,
     
-    -- The composer's technical implementation (filled after composition)
+    -- The composer's technical implementation (layer-based)
+    -- Structure: {durationFrames, layers[], enterTransition?, exitTransition?, composerNotes}
+    -- layers[] contains: background, image, text (no separate generated_image type)
     clip_spec jsonb,
     
     status text default 'pending',  -- 'pending' | 'composed' | 'failed'
-    created_at timestamptz default now(),
-    updated_at timestamptz default now()
-);
-
--- ─────────────────────────────────────────────────────────────
--- Text Tasks: Text overlays and kinetic typography
--- ─────────────────────────────────────────────────────────────
-create table text_tasks (
-    id uuid primary key default gen_random_uuid(),
-    video_project_id uuid not null references video_projects(id) on delete cascade,
-    
-    -- The text content
-    text_content text not null,
-    
-    -- Timeline position
-    start_time_s float not null,
-    duration_s float not null,
-    
-    -- Creative direction (same philosophy as clip_tasks)
-    composer_notes text not null,
-    
-    -- Composed output
-    text_spec jsonb,
-    
-    status text default 'pending',
     created_at timestamptz default now(),
     updated_at timestamptz default now()
 );
@@ -104,6 +84,37 @@ create table music_analyses (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- Generated Assets: AI-enhanced images
+-- ─────────────────────────────────────────────────────────────
+-- These are just images with a src path. The clip_spec uses them
+-- via "type": "image" (same as captured screenshots).
+-- This table exists for tracking/debugging/regeneration.
+create table generated_assets (
+    id uuid primary key default gen_random_uuid(),
+    video_project_id uuid not null references video_projects(id) on delete cascade,
+    clip_task_id uuid references clip_tasks(id) on delete cascade,
+    
+    -- Generation details
+    source_asset_path text,              -- Original asset this was generated from (if any)
+    prompt text not null,                -- The generation prompt
+    aspect_ratio text default '16:9',    -- 16:9, 9:16, 1:1, 4:3
+    description text,                    -- Optional label (defaults to prompt summary)
+    
+    -- Output
+    asset_path text,                     -- Local path to generated asset
+    asset_url text,                      -- CDN/signed URL for the asset
+    
+    -- Metadata
+    generation_model text,               -- e.g., "gemini-3-pro-image-preview"
+    
+    status text default 'pending',       -- 'pending' | 'generating' | 'success' | 'failed'
+    error_message text,
+    
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- Add editor status to video_projects
 -- ─────────────────────────────────────────────────────────────
 alter table video_projects 
@@ -119,11 +130,11 @@ add column if not exists video_project_id uuid references video_projects(id) on 
 -- ─────────────────────────────────────────────────────────────
 create index if not exists idx_clip_tasks_project on clip_tasks(video_project_id);
 create index if not exists idx_clip_tasks_status on clip_tasks(status);
-create index if not exists idx_text_tasks_project on text_tasks(video_project_id);
-create index if not exists idx_text_tasks_status on text_tasks(status);
 create index if not exists idx_video_specs_project on video_specs(video_project_id);
 create index if not exists idx_music_analyses_project on music_analyses(video_project_id);
 create index if not exists idx_capture_tasks_project on capture_tasks(video_project_id);
+create index if not exists idx_generated_assets_project on generated_assets(video_project_id);
+create index if not exists idx_generated_assets_clip on generated_assets(clip_task_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- Updated_at triggers
@@ -140,6 +151,6 @@ create trigger clip_tasks_updated_at
     before update on clip_tasks
     for each row execute function update_updated_at();
 
-create trigger text_tasks_updated_at
-    before update on text_tasks
+create trigger generated_assets_updated_at
+    before update on generated_assets
     for each row execute function update_updated_at();

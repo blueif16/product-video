@@ -1,0 +1,12 @@
+# Audio Directory
+
+Place audio files here:
+- Background music (.mp3)
+- Sound effects (.mp3, .wav)
+- Voice over tracks
+
+Use with staticFile():
+```tsx
+import { staticFile } from "remotion";
+<Audio src={staticFile("audio/background.mp3")} />
+```

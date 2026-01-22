@@ -14,16 +14,20 @@ from typing import Optional
 def get_supabase(elevated: bool = True) -> Client:
     """
     Get Supabase client with appropriate API key.
-    
+
     Args:
         elevated: If True, use secret key (bypasses RLS, full access).
                  If False, use publishable key (respects RLS).
-    
+
     Returns:
         Supabase Client instance
     """
     api_key = Config.get_supabase_key(elevated=elevated)
     return create_client(Config.SUPABASE_URL, api_key)
+
+
+# Alias for backward compatibility
+get_client = get_supabase
 
 
 # ─────────────────────────────────────────────────────────────

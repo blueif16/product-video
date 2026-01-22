@@ -1,0 +1,11 @@
+# Screenshots Directory
+
+Place captured screenshots here for use in compositions.
+
+During automated capture, the pipeline will save screenshots here.
+
+Use with staticFile():
+```tsx
+import { staticFile } from "remotion";
+<Img src={staticFile("screenshots/dashboard.png")} />
+```

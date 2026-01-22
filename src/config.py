@@ -11,7 +11,8 @@ load_dotenv()
 
 class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    
+    ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
     # Supabase URL
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     
@@ -32,7 +33,26 @@ class Config:
     MAX_CAPTURE_ATTEMPTS = 5
     DEFAULT_RECORDING_DURATION = 8
     MODEL_NAME = "gemini-3-flash-preview"
-    
+
+    # ─────────────────────────────────────────────────────────────
+    # Video Trimming Configuration
+    # ─────────────────────────────────────────────────────────────
+    # 是否自动裁剪视频中的静态帧
+    AUTO_TRIM_STATIC_FRAMES = os.getenv("AUTO_TRIM_STATIC_FRAMES", "true").lower() == "true"
+
+    # 运动检测阈值（None = 自动检测）
+    _threshold_env = os.getenv("MOTION_DETECTION_THRESHOLD")
+    MOTION_DETECTION_THRESHOLD = float(_threshold_env) if _threshold_env else None
+
+    # 最小运动时长（秒）
+    MIN_MOTION_DURATION = float(os.getenv("MIN_MOTION_DURATION", "0.3"))
+
+    # 合并间隔（秒）
+    MERGE_GAP = float(os.getenv("MERGE_GAP", "0.3"))
+
+    # 缓冲时间（秒）
+    BUFFER_TIME = float(os.getenv("BUFFER_TIME", "0.2"))
+
     # Debug mode - set DEBUG=1 in env to enable verbose logging
     DEBUG = os.getenv("DEBUG", "").lower() in ("1", "true", "yes")
     

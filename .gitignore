@@ -34,3 +34,10 @@ checkpoints/
 
 # Settings
 settings*.json
+
+# Remotion npm files
+remotion/node_modules/
+remotion/package-lock.json
+
+*/assets/*
+assets/

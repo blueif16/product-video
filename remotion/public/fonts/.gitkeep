@@ -1,0 +1,5 @@
+# Fonts Directory
+
+Place custom font files here (.woff2, .ttf, .otf).
+
+For Google Fonts, use the @remotion/google-fonts package instead.

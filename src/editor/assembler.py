@@ -7,14 +7,13 @@ into a complete VideoSpec for Remotion.
 This is NOT an LLM agent - it's a deterministic assembly process.
 The creative decisions were made by planner/composers.
 
-## Layer-Based Architecture
+## Simplification: Unified Image Type
 
-Each clip now contains a layers[] array with:
-- Image layers (original assets)
-- Generated image layers (AI-enhanced)
-- Text layers (typography)
+All image layers are now just "image" type with a src path.
+No special handling for "generated_image" - it doesn't exist anymore.
+The composer already put the correct paths in place.
 
-The assembler reads these and creates a VideoSpec that Remotion understands.
+Assembler just reads the layers and passes them to Remotion.
 """
 from typing import Optional
 import json
@@ -33,11 +32,14 @@ def assemble_video_spec(
     - clip_tasks (status='composed')
     - video_projects (for metadata)
     
+    No special handling needed for different image types.
+    All images have src paths already set by the composer.
+    
     Returns:
         Complete VideoSpec dict ready for Remotion
     """
     from db.supabase_client import get_client
-    from tools.editor_tools import get_composed_clip_specs, get_generated_assets
+    from tools.editor_tools import get_composed_clip_specs
     
     client = get_client()
     
@@ -68,7 +70,7 @@ def assemble_video_spec(
             "id": task["id"],
             "startFrame": start_frame,
             "durationFrames": spec.get("durationFrames", int(task["duration_s"] * fps)),
-            "layers": spec.get("layers", []),
+            "layers": spec.get("layers", []),  # Layers already have correct src paths
             "composerNotes": spec.get("composerNotes", ""),
         }
         
@@ -78,13 +80,9 @@ def assemble_video_spec(
         if spec.get("exitTransition"):
             clip["exitTransition"] = spec["exitTransition"]
         
-        # Ensure all image layers have the correct src
-        # (fill in generated asset URLs if available)
-        for layer in clip["layers"]:
-            if layer.get("type") == "generated_image" and layer.get("generatedAssetId"):
-                generated_asset = get_generated_asset_by_id(layer["generatedAssetId"])
-                if generated_asset and generated_asset.get("asset_url"):
-                    layer["src"] = generated_asset["asset_url"]
+        # NOTE: No special handling for generated_image layers anymore.
+        # All images are just "image" type with src already set.
+        # The composer took care of putting the right paths in place.
         
         clips.append(clip)
     
@@ -114,18 +112,6 @@ def assemble_video_spec(
     }
     
     return video_spec
-
-
-def get_generated_asset_by_id(asset_id: str) -> Optional[dict]:
-    """Get a generated asset by ID."""
-    from db.supabase_client import get_client
-    
-    try:
-        client = get_client()
-        result = client.table("generated_assets").select("*").eq("id", asset_id).single().execute()
-        return result.data
-    except Exception:
-        return None
 
 
 def extract_title(user_input: str) -> str:
@@ -180,7 +166,10 @@ def validate_video_spec(spec: dict) -> tuple[bool, list[str]]:
         # Check each layer
         for j, layer in enumerate(layers):
             layer_type = layer.get("type")
-            if layer_type not in ["image", "generated_image", "text"]:
+            
+            # Valid types: background, image, text
+            # NOTE: "generated_image" is no longer valid - use "image" instead
+            if layer_type not in ["image", "text", "background"]:
                 issues.append(f"Clip {i+1} layer {j+1} has invalid type: {layer_type}")
             
             if layer_type == "image" and not layer.get("src"):

@@ -33,9 +33,50 @@ class CaptureResult:
 _result = CaptureResult()
 
 
+class ValidationState:
+    """
+    Track validation state to prevent reporting success when validation failed.
+    This enforces the rule: you can only report success if the last validation passed.
+    """
+    def __init__(self):
+        self.last_validation_passed: Optional[bool] = None
+        self.last_validated_path: Optional[str] = None
+        self.validation_count: int = 0
+        self.success_count: int = 0
+    
+    def record_validation(self, passed: bool, asset_path: str):
+        self.last_validation_passed = passed
+        self.last_validated_path = asset_path
+        self.validation_count += 1
+        if passed:
+            self.success_count += 1
+    
+    def can_report_success(self, asset_path: str) -> tuple[bool, str]:
+        """
+        Check if we can report success for this asset.
+        Returns (allowed, reason).
+        """
+        # If no validation was done, we can't report success
+        if self.validation_count == 0:
+            return False, "No validation was performed"
+        
+        # If no validation ever passed, we can't report success
+        if self.success_count == 0:
+            return False, "No validation passed"
+        
+        # If the last validation failed, we can't report success
+        if not self.last_validation_passed:
+            return False, "Last validation failed - capture again or report failure"
+        
+        return True, "OK"
+
+_validation_state = ValidationState()
+
+
 def reset_result():
-    global _result
+    global _result, _validation_state
     _result = CaptureResult()
+    _validation_state = ValidationState()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -50,17 +91,60 @@ def create_result_tool(task_id: str):
         """
         Report the result of a capture attempt. YOU MUST CALL THIS when done.
         
+        IMPORTANT: You can only report success=True if the last validation passed.
+        If validation failed, you must either:
+        1. Capture again and get a passing validation
+        2. Report success=False with explanation
+        
         Args:
             success: True if capture is usable for marketing video
             asset_path: Path to the captured file
             notes: Explanation of result or what went wrong
         
         Returns:
-            Confirmation
+            Confirmation or error if trying to report success without valid validation
         """
+        # Enforce validation state - can't report success if validation failed
+        if success:
+            allowed, reason = _validation_state.can_report_success(asset_path)
+            if not allowed:
+                return f"BLOCKED: Cannot report success - {reason}. Either capture again with passing validation, or report failure."
+        
         status = "success" if success else "failed"
         update_task_status(task_id, status, asset_path=asset_path, validation_notes=notes)
-        
+
+        # Auto-trim static frames from video
+        if success and asset_path.endswith('.mp4') and Config.AUTO_TRIM_STATIC_FRAMES:
+            try:
+                import sys
+                from pathlib import Path as PathLib
+
+                # Add scripts directory to path
+                scripts_dir = PathLib(__file__).parent.parent.parent / "scripts"
+                if str(scripts_dir) not in sys.path:
+                    sys.path.insert(0, str(scripts_dir))
+
+                from trim_static_frames import trim_video
+
+                trimmed_path = trim_video(
+                    input_path=asset_path,
+                    threshold=Config.MOTION_DETECTION_THRESHOLD,
+                    min_motion_duration=Config.MIN_MOTION_DURATION,
+                    merge_gap=Config.MERGE_GAP,
+                    buffer=Config.BUFFER_TIME,
+                    verbose=True
+                )
+
+                # Update asset_path if trimmed
+                if trimmed_path != asset_path:
+                    asset_path = trimmed_path
+                    # Update DB with new trimmed path
+                    update_task_status(task_id, status, asset_path=asset_path, validation_notes=notes)
+
+            except Exception as e:
+                # Trimming failure should not break the pipeline
+                log(f"   ⚠️  视频裁剪失败（保留原视频）: {str(e)}")
+
         # Track for logging
         _result.success = success
         _result.asset_path = asset_path
@@ -338,69 +422,262 @@ def build_capture_prompt(manifest: Optional[AppManifest]) -> str:
     
     manifest_section = format_manifest_for_prompt(manifest)
     
-    return f"""You are capturing iOS app content for a marketing video.
+    return f"""You are an expert iOS capture agent. Your job is to capture HIGH-QUALITY screenshots and recordings for marketing videos.
 
 INTERACTION BACKEND: {INTERACTION_BACKEND}
 {manifest_section}
-═══════════════════════════════════════════════════════════════
-WORKFLOW FOR SCREENSHOTS
-═══════════════════════════════════════════════════════════════
-1. set_status_bar(time_str="9:41", battery_level=100)  # Clean status bar
-2. set_appearance("light")  # Or "dark" if task requires
-3. launch_app(bundle_id)  # OR open_url("scheme://path") if deep link available
-4. wait_seconds(2)  # Let app load
-5. [Navigate with tap/swipe if needed, wait between actions]
-6. wait_seconds(0.5)  # Let animations settle
-7. capture_screenshot(name)
-8. validate_capture(path, description, app_context)  # Include app context!
-9. report_capture_result(success, path, notes)
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  CORE PRINCIPLE: OBSERVE → UNDERSTAND → ACT → VERIFY                         ║
+║                                                                               ║
+║  NEVER tap blindly. ALWAYS know what's on screen before acting.              ║
+║  NEVER guess coordinates. ALWAYS use describe_screen() to find elements.     ║
+║  NEVER start recording until you've verified the full flow works.            ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 
 ═══════════════════════════════════════════════════════════════
-WORKFLOW FOR RECORDINGS
+METHODOLOGY FOR RECORDINGS (Complex Flows)
 ═══════════════════════════════════════════════════════════════
-1. set_status_bar(time_str="9:41", battery_level=100)
-2. set_appearance("light")
-3. launch_app(bundle_id)
-4. wait_seconds(2)
-5. session_id = start_recording(name)  # Actions are timestamped!
-6. [Perform interactions: tap, swipe, type]
-7. wait_seconds(1)  # Let animations complete
-8. result = stop_recording(session_id)  # Returns video_path
-9. validate_capture(video_path, description, app_context)
-10. report_capture_result(success, path, notes)
+
+PHASE 1: SETUP
+  1. set_status_bar(time_str="9:41")
+  2. set_appearance("light")  
+  3. open_url(deep_link) OR launch_app(bundle_id)
+  4. wait_seconds(2)
+
+PHASE 2: RECONNAISSANCE (CRITICAL - Do this BEFORE recording!)
+  5. describe_screen() → Read the output carefully!
+     - What elements are visible?
+     - What are their approximate positions?
+     - Is this the screen you expected?
+  
+  6. DRY RUN: Perform the navigation/interaction WITHOUT recording
+     - Tap where you think the button is
+     - describe_screen() → Did the screen change as expected?
+     - If not, adjust and try again
+     - Continue until you can complete the FULL flow
+  
+  7. Return to starting state (open_url again or navigate back)
+
+PHASE 3: EXECUTE (Only after dry run succeeds!)
+  8. describe_screen() → Confirm you're at the starting point
+  9. start_recording(name)
+  10. Execute the SAME actions that worked in dry run
+      - After EACH tap/swipe/type: wait_seconds(1.0)  ← MINIMUM 1.0s for video encoder!
+      - NEVER use wait < 1.0s during recording
+  11. wait_seconds(2.0) → MINIMUM 2.0s before stop (let encoder flush)
+  12. stop_recording(session_id)
+
+PHASE 4: VALIDATE & REPORT
+  13. validate_capture(video_path, description, app_context)
+  14. report_capture_result(success, path, notes)
+
+RECORDING TIMING REQUIREMENTS (CRITICAL for video quality):
+  - Minimum 1.0s wait after EACH interaction (tap, swipe, type_text)
+  - Minimum 2.0s wait before stop_recording
+  - Total recording duration should be at least 4-5 seconds
+  - Short waits (0.3-0.5s) cause "Could not extract frames" errors!
 
 ═══════════════════════════════════════════════════════════════
-COORDINATES (iPhone 15 Pro - 393x852 points)
+METHODOLOGY FOR SCREENSHOTS (Simpler)
 ═══════════════════════════════════════════════════════════════
+1. set_status_bar + set_appearance
+2. Navigate to target screen
+3. describe_screen() → Verify you're on the right screen
+4. wait_seconds(0.5) → Let UI settle
+5. capture_screenshot(name)
+6. validate_capture → report_capture_result
+
+═══════════════════════════════════════════════════════════════
+HOW TO READ describe_screen() OUTPUT
+═══════════════════════════════════════════════════════════════
+The output is an accessibility tree. Look for:
+  - "AXButton" with "AXLabel" → Tappable buttons
+  - "AXTextField" → Text input fields  
+  - "AXStaticText" → Labels/text
+  - "AXFrame": "{{{{x, y}}}}, {{{{width, height}}}}" → Element position
+
+To tap an element, use the CENTER of its frame:
+  tap_x = x + (width / 2)
+  tap_y = y + (height / 2)
+
+═══════════════════════════════════════════════════════════════
+COORDINATE REFERENCE (iPhone 15 Pro - 393x852 points)
+═══════════════════════════════════════════════════════════════
+• Status bar: y = 0-54
 • Nav bar: y = 54-100
-• Content: y = 100-750
-• Tab bar: y = 750-832 (tap here for tabs)
-• Common swipes:
-  - Scroll up: swipe(200, 600, 200, 200)
-  - Scroll down: swipe(200, 200, 200, 600)
-  - Pull refresh: swipe(200, 150, 200, 450)
+• Content area: y = 100-750
+• Tab bar: y = 750-832
+• Home indicator: y = 832-852
+
+Common swipes:
+  - Scroll up (reveal more below): swipe(200, 600, 200, 200)
+  - Scroll down (reveal more above): swipe(200, 200, 200, 600)
 
 ═══════════════════════════════════════════════════════════════
-NAVIGATION TIPS
+FEW-SHOT EXAMPLES
 ═══════════════════════════════════════════════════════════════
-• USE DEEP LINKS when available - they're faster and more reliable than taps
-• If you see tabs listed above, tap the tab bar (y≈790) to switch tabs
-• Use verify_screen() before capturing to confirm you're on the right screen
-• If navigation fails, try describe_screen() to see what's actually visible
+
+▼ EXAMPLE 1: Recording a "tap button → see result" flow
+─────────────────────────────────────────────────────
+TASK: Record tapping the "Add Task" button and seeing the modal
+
+✗ WRONG (blind execution):
+  open_url(myapp://tasks)
+  start_recording("add_task")
+  tap(200, 400)  ← Guessing!
+  stop_recording
+  validate_capture  ← Fails because tap missed
+
+✓ CORRECT (observe-act-verify):
+  open_url(myapp://tasks)
+  wait_seconds(2)
+  
+  # RECON: Find the button
+  describe_screen()
+  # Output shows: AXButton "Add Task" at frame {{{{320, 720}}}}, {{{{60, 44}}}}
+  # Calculate: tap_x = 320 + 30 = 350, tap_y = 720 + 22 = 742
+  
+  # DRY RUN: Test the tap
+  tap(350, 742)
+  wait_seconds(0.5)
+  describe_screen()
+  # Output shows: Modal with "New Task" title ✓
+  
+  # Reset to starting point
+  open_url(myapp://tasks)
+  wait_seconds(1)
+  describe_screen()  ← Confirm back at start
+  
+  # NOW record (we know it works)
+  start_recording("add_task_flow")
+  tap(350, 742)
+  wait_seconds(1)
+  stop_recording(session_id)
+  validate_capture(...)
+  report_capture_result(True, ...)
+
+
+▼ EXAMPLE 2: Recording carousel swipe + tap
+─────────────────────────────────────────────────────
+TASK: Record swiping through outfit carousel and tapping an item
+
+✓ CORRECT approach:
+  open_url(yiban://outfit)
+  wait_seconds(2)
+  
+  # RECON: Understand the layout
+  describe_screen()
+  # Output shows:
+  #   - "Outfit" header at top  
+  #   - Horizontal scroll view at y=300-500
+  #   - Outfit cards at x=50, x=200, x=350
+  
+  # DRY RUN: Test swipe
+  swipe(300, 400, 100, 400)  ← Swipe left in carousel area
+  wait_seconds(0.5)
+  describe_screen()
+  # Verify: New items visible? Yes ✓
+  
+  # DRY RUN: Test tap on item
+  tap(200, 400)
+  wait_seconds(0.5)
+  describe_screen()
+  # Verify: Detail view appeared? Yes ✓
+  
+  # Reset
+  open_url(yiban://outfit)
+  wait_seconds(1)
+  describe_screen()  ← Confirm reset
+  
+  # Execute with recording
+  start_recording("outfit_browse")
+  swipe(300, 400, 100, 400)
+  wait_seconds(0.5)
+  swipe(100, 400, 300, 400)
+  wait_seconds(0.5)
+  tap(200, 400)
+  wait_seconds(1)
+  stop_recording(session_id)
+  validate_capture(...)
+
+
+▼ EXAMPLE 3: Handling unexpected screen
+─────────────────────────────────────────────────────
+  open_url(myapp://settings)
+  wait_seconds(2)
+  describe_screen()
+  # Output shows: Login screen with email/password!
+  # UNEXPECTED! Wanted Settings, got Login
+  
+  # Adapt: Try alternative navigation
+  press_home()
+  launch_app(bundle_id)
+  wait_seconds(2)
+  describe_screen()
+  # Shows: Home screen with tab bar at bottom
+  
+  # Navigate via tabs instead
+  tap(350, 790)  ← Settings tab (rightmost)
+  wait_seconds(1)
+  describe_screen()
+  # Shows: Settings screen ✓ - now proceed
 
 ═══════════════════════════════════════════════════════════════
-VALIDATION
+VALIDATION CONTEXT
 ═══════════════════════════════════════════════════════════════
-• Pass app_context to validate_capture so validator knows what to expect
-• Example: "This is Yiban, a closet app. Home screen shows weather-based outfit suggestions."
-• This prevents validator from thinking it's the wrong app!
+ALWAYS include app_context when validating:
+
+  validate_capture(
+    asset_path=video_path,
+    task_description="Recording of outfit browsing",
+    app_context="This is Yiban, a closet/outfit app. Outfit screen shows a carousel of outfit suggestions that can be swiped."
+  )
 
 ═══════════════════════════════════════════════════════════════
-IMPORTANT
+HANDLING FAILURES (Distinguish failure types!)
 ═══════════════════════════════════════════════════════════════
-• ALWAYS set_status_bar first — ugly status bars ruin marketing shots
-• YOU MUST call report_capture_result when done
-• Max {Config.MAX_CAPTURE_ATTEMPTS} attempts if validation fails
+
+▼ TECHNICAL FAILURE: "Could not extract frames from video"
+  → This is a RECORDING problem, NOT a navigation problem
+  → The video file is corrupt or too short
+  → Root cause: wait_seconds too short during recording
+
+  FIX:
+    1. Re-navigate to starting state (open_url or launch_app)
+    2. Re-do FULL recon (describe_screen, dry run)
+    3. Record again with LONGER waits:
+       - wait_seconds(1.0) after EACH tap/swipe (not 0.5!)
+       - wait_seconds(2.0) before stop_recording
+    4. Validate again
+
+▼ NAVIGATION FAILURE: "wrong screen" / "tap missed" / "element not found"
+  → This is a NAVIGATION problem
+  → Your coordinates were wrong or screen state unexpected
+
+  FIX:
+    1. describe_screen() → See where you actually are
+    2. Find correct element coordinates from accessibility tree
+    3. Try alternative navigation (different deep link, tab tap, etc.)
+    4. Re-do dry run with corrected approach
+
+▼ ON ANY RETRY (MANDATORY):
+  → ALWAYS re-navigate to starting state (open_url/launch_app)
+  → ALWAYS re-do describe_screen() recon
+  → ALWAYS re-do dry run to verify flow works
+  → NEVER just re-validate the same broken file
+  → NEVER skip recon and jump straight to recording
+
+═══════════════════════════════════════════════════════════════
+CRITICAL RULES
+═══════════════════════════════════════════════════════════════
+1. ALWAYS describe_screen() after navigation, BEFORE any taps
+2. NEVER start recording until dry run succeeds
+3. After EACH action in recon, describe_screen() to verify
+4. If tap doesn't work → describe_screen() → find correct position
+5. YOU MUST call report_capture_result when done
+6. Max {Config.MAX_CAPTURE_ATTEMPTS} attempts - use recon to succeed first try!
+7. On retry: FULL reset + recon (see HANDLING FAILURES above)
 """
 
 
@@ -496,6 +773,7 @@ Start with set_status_bar, then launch_app (or use deep link), navigate, capture
     just_failed_validation = False
     first_tool_call = True
     event_count = 0
+    pending_validation_path = None  # Track asset_path for validation state
     
     try:
         for event in agent.stream({"messages": input_messages}):
@@ -537,6 +815,10 @@ Start with set_status_bar, then launch_app (or use deep link), navigate, capture
                                         log("")
                                         just_failed_validation = False
                                     
+                                    # Track asset_path when validate_capture is called
+                                    if tool_name == "validate_capture":
+                                        pending_validation_path = tool_args.get("asset_path", "")
+                                    
                                     print_tool_call(tool_name, tool_args)
                         else:
                             content = msg.content if msg.content else ""
@@ -550,6 +832,12 @@ Start with set_status_bar, then launch_app (or use deep link), navigate, capture
                         if msg.name == "validate_capture":
                             is_failure = "FAILED" in content.upper()
                             print_validation_result(content, is_failure)
+                            
+                            # Record validation result in state tracker
+                            _validation_state.record_validation(
+                                passed=not is_failure,
+                                asset_path=pending_validation_path or ""
+                            )
                             
                             if is_failure:
                                 just_failed_validation = True
