@@ -2,7 +2,7 @@
 StreamLine Video Pipeline - Main Entry Point
 
 Usage:
-    # Full pipeline (capture → edit → render)
+    # Full pipeline (capture → edit → render → music)
     python -m src.main
     
     # Capture only
@@ -14,8 +14,11 @@ Usage:
     # Editor test mode (mock data, no DB)
     python -m src.main --phase editor --test
     
-    # Skip rendering
+    # Skip rendering (and music)
     python -m src.main --no-render
+    
+    # Skip music generation
+    python -m src.main --no-music
 
 Handles graceful shutdown on Ctrl+C with optional database cleanup.
 """
@@ -175,17 +178,29 @@ def run_capture_phase(user_input: str) -> dict:
     return result
 
 
-def run_editor_phase(project_id: str = None, test_mode: bool = False, include_render: bool = True) -> dict:
+def run_editor_phase(
+    project_id: str = None,
+    test_mode: bool = False,
+    include_render: bool = True,
+    include_music: bool = True,
+) -> dict:
     """Run editor phase only."""
-    from editor import run_editor_standalone, run_editor_test, create_test_state
+    from editor import run_editor_standalone, run_editor_test
     
     print("\n" + "="*60)
     print("Phase: EDITOR" + (" (TEST MODE)" if test_mode else ""))
+    if include_music:
+        print("       Music: ENABLED (will generate after render)")
+    else:
+        print("       Music: DISABLED")
     print("="*60)
     
     if test_mode:
         print("\n🧪 Running with test data (no database)...")
-        result = run_editor_test(include_render=include_render)
+        result = run_editor_test(
+            include_render=include_render,
+            include_music=include_music,
+        )
     else:
         if not project_id:
             print("Error: --project-id required for editor phase")
@@ -193,23 +208,43 @@ def run_editor_phase(project_id: str = None, test_mode: bool = False, include_re
             sys.exit(1)
         
         print(f"\n📂 Loading project: {project_id}")
-        result = run_editor_standalone(project_id, include_render=include_render)
+        result = run_editor_standalone(
+            project_id,
+            include_render=include_render,
+            include_music=include_music,
+        )
     
     print("\n✅ Editor phase completed!")
     
-    if result.get("render_path"):
-        print(f"   Output: {result['render_path']}")
+    # Report final output
+    if result.get("final_video_path"):
+        print(f"   🎬 Final video (with music): {result['final_video_path']}")
+    elif result.get("render_path"):
+        print(f"   🎬 Video rendered: {result['render_path']}")
+        if include_music:
+            print(f"   ⚠️  Music generation may have failed")
     elif result.get("video_spec"):
-        print(f"   VideoSpec created (render {'skipped' if not include_render else 'failed'})")
+        print(f"   📋 VideoSpec created (render {'skipped' if not include_render else 'failed'})")
+    
+    if result.get("audio_path"):
+        print(f"   🎵 Audio: {result['audio_path']}")
     
     return result
 
 
-def run_full_pipeline_interactive(user_input: str, include_render: bool = True) -> dict:
+def run_full_pipeline_interactive(
+    user_input: str,
+    include_render: bool = True,
+    include_music: bool = True,
+) -> dict:
     """Run complete pipeline."""
     from pipeline import run_full_pipeline
     
-    return run_full_pipeline(user_input, include_render=include_render)
+    return run_full_pipeline(
+        user_input,
+        include_render=include_render,
+        include_music=include_music,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -231,6 +266,9 @@ Examples:
   
   # Editor phase (from completed capture)
   python -m src.main --phase editor --project-id abc-123
+  
+  # Editor without music
+  python -m src.main --phase editor --project-id abc-123 --no-music
   
   # Editor test mode
   python -m src.main --phase editor --test
@@ -268,6 +306,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--no-music",
+        action="store_true",
+        help="Skip music generation"
+    )
+    
+    parser.add_argument(
         "--input",
         help="User input string (skips interactive prompt)"
     )
@@ -275,6 +319,12 @@ Examples:
     args = parser.parse_args()
     
     setup_signal_handlers()
+    
+    # Determine music setting
+    include_music = not args.no_music
+    # If no render, no music either
+    if args.no_render:
+        include_music = False
     
     try:
         # ─────────────────────────────────────────────────────
@@ -285,6 +335,7 @@ Examples:
                 project_id=args.project_id,
                 test_mode=args.test,
                 include_render=not args.no_render,
+                include_music=include_music,
             )
         
         # ─────────────────────────────────────────────────────
@@ -314,6 +365,7 @@ Examples:
             run_full_pipeline_interactive(
                 user_input,
                 include_render=not args.no_render,
+                include_music=include_music,
             )
     
     except Exception as e:
@@ -323,7 +375,12 @@ Examples:
         handle_shutdown()
 
 
-def run_from_string(user_input: str, phase: str = "full", include_render: bool = True) -> dict:
+def run_from_string(
+    user_input: str,
+    phase: str = "full",
+    include_render: bool = True,
+    include_music: bool = True,
+) -> dict:
     """
     Programmatic entry point.
     
@@ -331,6 +388,7 @@ def run_from_string(user_input: str, phase: str = "full", include_render: bool =
         user_input: Description of app and video
         phase: "capture", "editor", or "full"
         include_render: Whether to render the video
+        include_music: Whether to generate music (requires render)
     
     Returns:
         Final pipeline state
@@ -341,10 +399,18 @@ def run_from_string(user_input: str, phase: str = "full", include_render: bool =
         return run_capture_phase(user_input)
     elif phase == "editor":
         # For editor, user_input is actually the project_id
-        return run_editor_phase(project_id=user_input, include_render=include_render)
+        return run_editor_phase(
+            project_id=user_input,
+            include_render=include_render,
+            include_music=include_music,
+        )
     else:
         from pipeline import run_full_pipeline
-        return run_full_pipeline(user_input, include_render=include_render)
+        return run_full_pipeline(
+            user_input,
+            include_render=include_render,
+            include_music=include_music,
+        )
 
 
 if __name__ == "__main__":

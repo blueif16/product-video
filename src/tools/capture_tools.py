@@ -15,11 +15,19 @@ import subprocess
 import shutil
 import time
 import json
+import signal
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 from config import Config
+
+
+# Suppress MallocStackLogging warnings from child processes
+_SUBPROCESS_ENV = os.environ.copy()
+_SUBPROCESS_ENV["MallocStackLogging"] = "0"
+_SUBPROCESS_ENV["MallocStackLoggingNoCompact"] = "0"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -73,7 +81,13 @@ def _get_output_path(capture_type: str, name: str, ext: str = None) -> Path:
 def _run(cmd: list, timeout: int = 30) -> tuple[int, str, str]:
     """Run command, return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=timeout,
+            env=_SUBPROCESS_ENV  # Suppresses MallocStackLogging warnings
+        )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return -1, "", f"Command timed out after {timeout}s"
@@ -834,13 +848,23 @@ def stop_recording(session_id: str) -> str:
         # Log stop action
         _log_action(session_id, "recording_stopped")
         
-        # Stop recording (send SIGINT)
-        session.process.terminate()
+        # Stop recording gracefully with SIGINT (like Ctrl+C)
+        # CRITICAL: terminate() sends SIGTERM which corrupts the video!
+        # SIGINT allows xcrun simctl recordVideo to finalize the file properly
+        session.process.send_signal(signal.SIGINT)
+        
+        # Give the process time to finalize the video container
+        time.sleep(0.5)
+        
         try:
             session.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
+            # If it still hasn't stopped, force kill (video may be corrupt)
             session.process.kill()
             session.process.wait()
+        
+        # Additional delay to ensure file is fully written to disk
+        time.sleep(0.3)
         
         # Clean up session
         del _active_recordings[session_id]
@@ -903,12 +927,16 @@ def capture_recording(name: str, duration_seconds: int = 8) -> str:
         # Wait for duration
         time.sleep(duration_seconds)
         
-        # Stop recording
-        process.terminate()
+        # Stop recording gracefully with SIGINT (not SIGTERM)
+        process.send_signal(signal.SIGINT)
+        time.sleep(0.5)  # Let video finalize
+        
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
+        
+        time.sleep(0.3)  # Ensure file is written to disk
         
         if output_path.exists():
             return f"Recording saved: {output_path}"

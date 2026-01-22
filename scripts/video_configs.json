@@ -1,0 +1,60 @@
+{
+  "begin": {
+    "product_name": "Begin",
+    "duration": 15,
+    "user_input": "Create a 15-second animated text promo video for Begin app.\n\nBegin is a daily fortune and guidance app that gives you personalized recommendations across different life categories to guide what's best to do each day. It makes better predictions based on the journals you write every day.\n\nSlogan: 晨启知今日 夜记向明天 (Morning insights for today, Evening notes for tomorrow)\n\nI want:\n- Bilingual content (English + Chinese) throughout the video\n- Title \"BEGIN\" / \"晨启\" with gentle, elegant entrance\n- Subtitle \"Your Daily Guide & Journal\" / \"每日指南与日记\" that fades in\n- Feature highlight: \"Personalized daily guidance\" / \"个性化每日指引\"\n- Feature highlight: \"Journal-powered predictions\" / \"日记驱动的预测\"\n- Slogan \"晨启知今日 夜记向明天\" with English subtitle\n- Light color palette with warm gradient backgrounds (sunrise/dawn theme)\n- Slower pacing, calm and mindful feel\n- Smooth, elegant transitions with gentle fade and scale effects\n- ALL TEXT MUST BE CENTERED on screen using position preset \"center\"\n- Bilingual text should appear as separate lines with proper spacing\n\nThis is a TEXT-ONLY video - no screenshots or app recordings.\nFocus on typography, bilingual layout, timing, and gradient visual aesthetics.",
+    "analysis_summary": "Text-only bilingual video for Begin daily guidance app.\n\nGoal: Create a calm, mindful promo video with elegant bilingual text animations showcasing the daily guidance and journaling concept.\n\nStyle: Light and airy aesthetic with warm gradient backgrounds. Sunrise/dawn theme with soft golden-amber tones. Gradient backgrounds transitioning smoothly (e.g., #fef3c7 → #fde68a → #fbbf24).\n\nColors:\n- Background: Light gradient (#fef3c7, #fde68a, #fbbf24)\n- Primary accent: #f59e0b (amber)\n- Secondary: #fbbf24 (golden)\n- Text: #78350f (dark amber for contrast)\n\nTypography: Inter/SF Pro with medium weights for readability. Bilingual text should be clearly separated or stacked.\n\nAnimation Style:\n- Use \"fade\" and \"scale\" animations with \"smooth\" feel for elegant, calm transitions\n- Avoid harsh cuts - use gentle fade exits\n- Text should breathe - give each message time to be absorbed\n- English and Chinese text should appear sequentially or stacked vertically\n\nLayout Requirements:\n- ALL text layers MUST use position preset \"center\" (never use custom x/y coordinates)\n- For bilingual content, create separate text layers for English and Chinese\n- Stack bilingual text vertically using y-offset from center (e.g., y: 45% for top line, y: 55% for bottom line)\n\nDuration: ~15 seconds (slower pacing)\nPacing: Intro fade (1.5s) → Hero title EN/CN (3s) → Subtitle EN/CN (2.5s) → Feature 1 (2s) → Feature 2 (2s) → Slogan (3s) → Fade out (1s)\n\nNO ASSETS AVAILABLE - create text-only clips with gradient background layers.",
+    "style": {
+      "theme": "light",
+      "background_type": "gradient",
+      "gradient_colors": ["#fef3c7", "#fde68a", "#fbbf24"],
+      "primary_accent": "#f59e0b",
+      "secondary_accent": "#fbbf24",
+      "text_color": "#78350f",
+      "typography": ["Inter", "SF Pro"]
+    }
+  },
+  "closet_ai": {
+    "product_name": "Closet AI",
+    "duration": 10,
+    "user_input": "Create a 10-second animated text promo video for my Closet AI app.\n\nCloset AI uses artificial intelligence to capture all your clothing in the closet, makes daily outfit recommendations based on weather and your preferences, records your style history, and makes choosing what to wear effortless.\n\nI want:\n- Bold title \"CLOSET AI\" with elegant entrance\n- Subtitle \"Your Personal Style Assistant\" that fades in\n- A tagline \"Never think hard about what to wear again.\"\n- Modern clean theme with soft teal/mint accents\n- Smooth, premium feel like a lifestyle app launch video\n\nThis is a TEXT-ONLY video - no screenshots or app recordings.\nFocus on typography, timing, and visual impact.",
+    "analysis_summary": "Text-only video generation test for Closet AI app.\n\nGoal: Create a lifestyle-focused promo video with elegant text animations showcasing the AI-powered wardrobe assistant concept.\n\nStyle: Modern lifestyle app aesthetic. Clean light background (#f8fafc), primary accent (#14b8a6 teal/mint), elegant typography (Inter/SF Pro).\n\nDuration: ~10 seconds\nPacing: Hero title (3s) → Subtitle (2s) → Tagline (3s) → Fade out (2s)\n\nNO ASSETS AVAILABLE - create text-only clips with background layers.",
+    "style": {
+      "theme": "light",
+      "background_type": "solid",
+      "background_color": "#f8fafc",
+      "primary_accent": "#14b8a6",
+      "typography": ["Inter", "SF Pro"]
+    }
+  },
+  "opus_flow": {
+    "product_name": "Opus Flow",
+    "duration": 18,
+    "user_input": "Create an 18-second animated text promo video for Opus Flow.\n\nOpus Flow is an intelligent app marketing automation tool that locally runs your iOS app, understands its core features through AI analysis or user input, automatically captures screenshots and recordings, then generates professional Product Hunt videos and Instagram content. It can create targeted marketing campaigns for different features and fully automate your app's marketing workflow.\n\nI want:\n- Bold title \"OPUS FLOW\" with modern, tech-forward entrance\n- Subtitle \"Automate Your App Marketing\" that fades in\n- Feature highlight: \"Local iOS app analysis & capture\"\n- Feature highlight: \"AI-powered video generation\"\n- Feature highlight: \"Automated marketing campaigns\"\n- Tagline \"From App to Audience, Automatically\"\n- Light theme with tech-focused blue/purple gradient\n- Professional, efficient feel with smooth transitions\n- ALL TEXT MUST BE CENTERED on screen using position preset \"center\"\n- Modern, clean typography with strong visual hierarchy\n\nThis is a TEXT-ONLY video - no screenshots or app recordings.\nFocus on typography, pacing, and conveying automation efficiency.",
+    "analysis_summary": "Text-only promo video for Opus Flow app marketing automation platform.\n\nGoal: Create a professional, tech-forward video showcasing the automated marketing workflow from app analysis to campaign deployment.\n\nStyle: Modern tech aesthetic with light gradient backgrounds. Blue-to-purple gradient theme suggesting innovation and automation. Gradient backgrounds transitioning smoothly (e.g., #f1f5f9 → #dbeafe → #e0e7ff).\n\nColors:\n- Background: Light gradient (#f1f5f9, #dbeafe, #e0e7ff)\n- Primary accent: #3b82f6 (blue for tech/trust)\n- Secondary: #8b5cf6 (purple for creativity/AI)\n- Text: #1e293b (dark slate for strong contrast)\n\nTypography: Inter/SF Pro with medium-to-bold weights for clarity and impact.\n\nAnimation Style:\n- Use \"fade\" and \"scale\" animations with \"smooth\" feel for professional transitions\n- Slightly faster pacing than Begin to convey efficiency and automation\n- Clear visual hierarchy - title bold, features medium weight\n- Each feature should appear distinctly with breathing room\n\nLayout Requirements:\n- ALL text layers MUST use position preset \"center\"\n- Single-language (English) for developer/marketer audience\n- Features should appear sequentially with consistent timing\n\nDuration: ~18 seconds\nPacing: Intro fade (1s) → Hero title (2.5s) → Subtitle (2s) → Feature 1 (3s) → Feature 2 (3s) → Feature 3 (3s) → Tagline (2.5s) → Fade out (1s)\n\nNO ASSETS AVAILABLE - create text-only clips with gradient background layers.",
+    "style": {
+      "theme": "light",
+      "background_type": "gradient",
+      "gradient_colors": ["#f1f5f9", "#dbeafe", "#e0e7ff"],
+      "primary_accent": "#3b82f6",
+      "secondary_accent": "#8b5cf6",
+      "text_color": "#1e293b",
+      "typography": ["Inter", "SF Pro"]
+    }
+  },
+  "opus_flow_simple": {
+    "product_name": "Opus Flow",
+    "duration": 18,
+    "user_input": "Opus Flow is an intelligent app marketing automation platform designed for iOS developers and marketers.\n\nCore capabilities:\n- Locally runs and analyzes your iOS app to understand key features automatically or through user input\n- Captures high-quality screenshots and screen recordings of your app in action\n- Generates professional Product Hunt launch videos and Instagram marketing content using AI\n- Creates targeted marketing campaigns highlighting different app features\n- Fully automates your app's marketing workflow from asset capture to content distribution\n\nBrand positioning: \"From App to Audience, Automatically\"\n\nTarget audience: iOS developers, indie makers, app marketers, product managers\n\nVisual style: Modern professional tech aesthetic with light theme, blue-purple gradient backgrounds conveying innovation and automation, clean typography emphasizing efficiency and intelligence.",
+    "analysis_summary": "Opus Flow is an app marketing automation platform for iOS developers and marketers. Video showcases the automated workflow: app analysis → asset capture → AI video generation → marketing campaigns. Modern tech aesthetic with light blue-purple gradients emphasizing innovation and automation efficiency. Should use fancy, modern animations while keeping everything consistant to most extent",
+    "style": {
+      "theme": "light",
+      "background_type": "gradient",
+      "gradient_colors": ["#f1f5f9", "#dbeafe", "#e0e7ff"],
+      "primary_accent": "#3b82f6",
+      "secondary_accent": "#8b5cf6",
+      "text_color": "#1e293b",
+      "typography": ["Inter", "SF Pro"]
+    }
+  }
+}

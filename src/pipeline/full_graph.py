@@ -14,6 +14,7 @@ from typing_extensions import TypedDict
 import operator
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -23,11 +24,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 class FullPipelineState(TypedDict):
     """Combined state for the full pipeline."""
-    
+
     # ─────────────────────────────────────────────────────────
     # Capture Phase Fields
     # ─────────────────────────────────────────────────────────
-    messages: list
+    messages: Annotated[list, add_messages]
     user_input: str
     project_path: Optional[str]
     app_bundle_id: Optional[str]
@@ -57,6 +58,16 @@ class FullPipelineState(TypedDict):
     render_status: Optional[str]
     render_path: Optional[str]
     render_error: Optional[str]
+    
+    # ─────────────────────────────────────────────────────────
+    # Music Phase Fields (populated after render)
+    # ─────────────────────────────────────────────────────────
+    music_analysis: Optional[dict]
+    composition_plan: Optional[dict]
+    refined_composition_plan: Optional[dict]
+    audio_path: Optional[str]
+    final_video_path: Optional[str]
+    mux_error: Optional[str]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -125,18 +136,23 @@ def should_continue_to_editor(state: FullPipelineState) -> Literal["bridge", "en
 # Graph Builder (Subgraph Composition)
 # ─────────────────────────────────────────────────────────────
 
-def build_full_pipeline(include_render: bool = True):
+def build_full_pipeline(include_render: bool = True, include_music: bool = True):
     """
-    Build the complete capture → edit → render pipeline.
+    Build the complete capture → edit → render → music pipeline.
     
     Uses subgraph composition: each phase is a compiled graph
     used as a node in the parent graph.
     
     Args:
         include_render: Whether to include the Remotion render step
+        include_music: Whether to include music generation (requires render)
     """
     from orchestrator.graph import build_pipeline as build_capture_graph
     from editor.graph import build_editor_graph
+    
+    # If no render, no music either
+    if not include_render:
+        include_music = False
     
     # Build subgraphs
     # Note: We need to extract just the graph logic, not run functions
@@ -158,9 +174,8 @@ def build_full_pipeline(include_render: bool = True):
     # ─────────────────────────────────────────────────────────
     from editor.planner import edit_planner_node
     from editor.clip_composer import compose_all_clips_node
-    from editor.text_composer import compose_all_texts_node
     from editor.assembler import edit_assembler_node
-    from editor.graph import route_after_planning, route_after_clips, should_render
+    from editor.graph import route_after_planning, should_render, should_generate_music
     
     # ─────────────────────────────────────────────────────────
     # Add Capture Phase Nodes
@@ -181,12 +196,22 @@ def build_full_pipeline(include_render: bool = True):
     # ─────────────────────────────────────────────────────────
     builder.add_node("planner", edit_planner_node)
     builder.add_node("compose_clips", compose_all_clips_node)
-    builder.add_node("compose_texts", compose_all_texts_node)
     builder.add_node("assemble", edit_assembler_node)
     
     if include_render:
         from renderer.render_client import remotion_render_node
         builder.add_node("render", remotion_render_node)
+    
+    # ─────────────────────────────────────────────────────────
+    # Add Music Phase Nodes (runs AFTER render)
+    # ─────────────────────────────────────────────────────────
+    if include_music:
+        from editor.music_planner import music_planner_node
+        from tools.music_generator import music_generator_node, mux_audio_video_node
+        
+        builder.add_node("music_plan", music_planner_node)
+        builder.add_node("music_generate", music_generator_node)
+        builder.add_node("mux_audio", mux_audio_video_node)
     
     # ─────────────────────────────────────────────────────────
     # Capture Phase Edges
@@ -225,21 +250,11 @@ def build_full_pipeline(include_render: bool = True):
         route_after_planning,
         {
             "compose_clips": "compose_clips",
-            "compose_texts": "compose_texts",
             "assemble": "assemble",
         }
     )
-    
-    builder.add_conditional_edges(
-        "compose_clips",
-        route_after_clips,
-        {
-            "compose_texts": "compose_texts",
-            "assemble": "assemble",
-        }
-    )
-    
-    builder.add_edge("compose_texts", "assemble")
+
+    builder.add_edge("compose_clips", "assemble")
     
     if include_render:
         builder.add_conditional_edges(
@@ -250,7 +265,26 @@ def build_full_pipeline(include_render: bool = True):
                 "end": END,
             }
         )
-        builder.add_edge("render", END)
+        
+        # ─────────────────────────────────────────────────────
+        # Music Phase Edges (after render)
+        # ─────────────────────────────────────────────────────
+        if include_music:
+            builder.add_conditional_edges(
+                "render",
+                should_generate_music,
+                {
+                    "music": "music_plan",
+                    "end": END,
+                }
+            )
+            
+            # Music flow: plan → generate → mux with video
+            builder.add_edge("music_plan", "music_generate")
+            builder.add_edge("music_generate", "mux_audio")
+            builder.add_edge("mux_audio", END)
+        else:
+            builder.add_edge("render", END)
     else:
         builder.add_edge("assemble", END)
     
@@ -261,13 +295,18 @@ def build_full_pipeline(include_render: bool = True):
 # Run Functions
 # ─────────────────────────────────────────────────────────────
 
-def run_full_pipeline(user_input: str, include_render: bool = True) -> dict:
+def run_full_pipeline(
+    user_input: str,
+    include_render: bool = True,
+    include_music: bool = True,
+) -> dict:
     """
-    Run the complete pipeline from user input to rendered video.
+    Run the complete pipeline from user input to rendered video with music.
     
     Args:
         user_input: Natural language description of app and video
         include_render: Whether to render (requires Remotion setup)
+        include_music: Whether to generate music (requires ElevenLabs API key)
     
     Returns:
         Final pipeline state
@@ -283,7 +322,7 @@ def run_full_pipeline(user_input: str, include_render: bool = True) -> dict:
     session = reset_session()
     session.is_running = True
     
-    graph = build_full_pipeline(include_render=include_render)
+    graph = build_full_pipeline(include_render=include_render, include_music=include_music)
     config = {"configurable": {"thread_id": "full-pipeline-session"}}
     
     initial_state = {
@@ -313,6 +352,13 @@ def run_full_pipeline(user_input: str, include_render: bool = True) -> dict:
         "render_status": None,
         "render_path": None,
         "render_error": None,
+        # Music phase fields
+        "music_analysis": None,
+        "composition_plan": None,
+        "refined_composition_plan": None,
+        "audio_path": None,
+        "final_video_path": None,
+        "mux_error": None,
     }
     
     try:
@@ -365,8 +411,14 @@ def run_full_pipeline(user_input: str, include_render: bool = True) -> dict:
     print("Pipeline Complete")
     print("="*60)
     
-    if final_state.get("render_path"):
+    if final_state.get("final_video_path"):
+        print(f"✓ Final video (with music): {final_state['final_video_path']}")
+        if final_state.get("audio_path"):
+            print(f"  🎵 Audio: {final_state['audio_path']}")
+    elif final_state.get("render_path"):
         print(f"✓ Video rendered: {final_state['render_path']}")
+        if final_state.get("mux_error"):
+            print(f"  ⚠️  Music muxing failed: {final_state['mux_error']}")
     elif final_state.get("video_spec"):
         print(f"✓ VideoSpec created (render skipped or failed)")
         if final_state.get("render_error"):

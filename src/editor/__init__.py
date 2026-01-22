@@ -1,27 +1,44 @@
 """
-Editor Phase - Video composition and assembly.
+Editor Phase - Video composition, music generation, and assembly.
 
-Transforms captured assets into a VideoSpec for Remotion rendering.
+Transforms captured assets into a VideoSpec for Remotion rendering,
+with aligned background music.
 
-## Layer-Based Architecture
+## Layer-Based Architecture (Simplified)
 
 Each clip is a self-contained "moment" with multiple layers:
-- Image layers (original screenshots/recordings)
-- Generated image layers (AI-enhanced visuals)
+- Background layers (solid colors, gradients, animated orbs)
+- Image layers (captured screenshots/recordings OR AI-generated images)
 - Text layers (typography, callouts)
 
-Text overlays are no longer separate tasks - they're layers within clips.
+NOTE: There's no separate "GeneratedImageLayer" - all images use ImageLayer.
+Generated images are just images with a src path. The model knows what it
+generated (it wrote the prompt). Simpler code, fewer special cases.
+
+## Music Generation
+
+After assembly, the music phase:
+1. Analyzes the clip timeline for hit points and energy levels
+2. Groups clips into musical sections
+3. Generates an ElevenLabs composition plan
+4. Creates BGM that aligns with visual beats
 
 ## Standalone Usage
 
 ```python
 from editor import run_editor_standalone
 
-# Load project from DB and run full editor pipeline
+# Load project from DB and run full editor pipeline (with music)
 result = run_editor_standalone("video-project-uuid")
 
-# Skip rendering (just create VideoSpec)
+# Skip music generation
+result = run_editor_standalone("video-project-uuid", include_music=False)
+
+# Skip rendering (just create VideoSpec + music)
 result = run_editor_standalone("video-project-uuid", include_render=False)
+
+# Run just the music phase
+result = run_music_only("video-project-uuid")
 ```
 
 ## Testing
@@ -35,18 +52,11 @@ state = create_test_state(
     assets=[{"id": "1", "path": "/path/to/asset.png", ...}]
 )
 
-# Build graph without render step
-graph = build_editor_graph(include_render=False)
-```
+# Text-only test (no assets)
+state = create_test_state(text_only=True)
 
-## As Subgraph
-
-```python
-from editor import build_editor_graph
-
-# Use as a node in a larger graph
-editor_graph = build_editor_graph()
-parent_builder.add_node("editor_phase", editor_graph)
+# Build graph without render/music
+graph = build_editor_graph(include_render=False, include_music=False)
 ```
 
 ## Pipeline Flow
@@ -54,16 +64,17 @@ parent_builder.add_node("editor_phase", editor_graph)
 ```
 EditorState (from loader or capture phase)
     ↓
-planner (creates clip_tasks in DB with rich creative notes)
+planner (creates clip_tasks with creative notes)
     ↓
-compose_clips (for each task: interprets notes → layer-based spec)
-    - Can generate AI-enhanced images
-    - Can add text layers
-    - Can create multi-layer transitions
+compose_clips (builds layer-based specs)
     ↓
 assembler (collects specs → VideoSpec JSON)
     ↓
-render (optional: calls Remotion CLI)
+music_plan (analyzes timeline → composition plan)
+    ↓
+music_generate (ElevenLabs → aligned BGM)
+    ↓
+render (optional: Remotion CLI)
 ```
 """
 
@@ -72,15 +83,19 @@ from .graph import (
     run_editor_standalone,
     run_editor_test,
     run_editor_with_checkpointer,
+    run_composing_only,
+    run_assembly_only,
+    run_music_only,
 )
 from .state import (
     EditorState,
     ClipSpec,
     VideoSpec,
-    # Layer types
+    AudioSpec,
+    # Layer types (simplified - no GeneratedImageLayer)
     Layer,
+    BackgroundLayer,
     ImageLayer,
-    GeneratedImageLayer,
     TextLayer,
     TransformSpec,
     OpacitySpec,
@@ -90,6 +105,13 @@ from .state import (
     TransitionSpec,
 )
 from .loader import load_editor_state, create_test_state, load_or_create_state
+from .music_planner import (
+    analyze_timeline_for_music,
+    extract_hit_points,
+    HitPoint,
+    MusicSection,
+    EnergyLevel,
+)
 
 __all__ = [
     # Graph builders & runners
@@ -97,16 +119,21 @@ __all__ = [
     "run_editor_standalone",
     "run_editor_test",
     "run_editor_with_checkpointer",
+    "run_composing_only",
+    "run_assembly_only",
+    "run_music_only",
     
     # State types
     "EditorState",
     "ClipSpec",
     "VideoSpec",
+    "AudioSpec",
     
-    # Layer types
+    # Layer types (simplified)
     "Layer",
+    "BackgroundLayer",
     "ImageLayer",
-    "GeneratedImageLayer",
+    # NOTE: GeneratedImageLayer removed - use ImageLayer for all images
     "TextLayer",
     "TransformSpec",
     "OpacitySpec",
@@ -119,4 +146,11 @@ __all__ = [
     "load_editor_state",
     "create_test_state",
     "load_or_create_state",
+    
+    # Music planning
+    "analyze_timeline_for_music",
+    "extract_hit_points",
+    "HitPoint",
+    "MusicSection",
+    "EnergyLevel",
 ]

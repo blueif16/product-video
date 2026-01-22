@@ -11,3 +11,4 @@ supabase>=2.0.0
 # Utils
 python-dotenv>=1.0.0
 Pillow>=10.0.0
+elevenlabs>=1.0.0

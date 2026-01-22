@@ -20,6 +20,74 @@ AI-powered product video generation for Product Hunt launches and SaaS marketing
    Final MP4 ready for Product Hunt
 ```
 
+---
+
+## Animation Catalog
+
+The system has a comprehensive animation library with **14 text animations**, **6 background types**, **10 image transforms**, and **3 animation feels**.
+
+### Text Animations
+
+| Animation | Effect | Best For |
+|-----------|--------|----------|
+| `fade` | Simple opacity 0→1 | Subtle, elegant |
+| `scale` | Scale 0.85→1 with fade | Punchy, confident |
+| `pop` | Scale with bounce overshoot | Playful, energetic |
+| `slide_up` | Slide from bottom | Reveals, lists |
+| `slide_down` | Slide from top | Headlines |
+| `slide_left` | Slide from right | Sequential info |
+| `slide_right` | Slide from left | Sequential info |
+| `typewriter` | Characters appear 1 by 1 | Code, terminals |
+| `stagger` | Words animate in sequence | Phrases, taglines |
+| `reveal` | Mask wipe reveal | Premium, cinematic |
+| `glitch` | Distortion then settle | Tech, edgy |
+| `highlight` | Animated underline/bg | Emphasis |
+| `countup` | Number 0 → target | Stats, metrics |
+| `none` | Instant appear | Hard cuts |
+
+### Animation Feel (Spring Physics)
+
+| Feel | Effect | Use Case |
+|------|--------|----------|
+| `snappy` | Fast, no bounce | Corporate, professional |
+| `smooth` | Medium, gentle ease | Elegant, premium |
+| `bouncy` | Overshoot and settle | Playful, fun |
+
+### Background Types
+
+| Type | Effect |
+|------|--------|
+| `color` | Solid hex color |
+| `gradient` | Linear gradient with angle |
+| `orbs` | Animated glowing spheres (SaaS vibe) |
+| `grid` | Technical grid pattern |
+| `noise` | Film grain texture |
+| `radial` | Centered radial gradient (spotlight) |
+
+### Image Transforms
+
+| Transform | Effect |
+|-----------|--------|
+| `zoom_in` | Slow zoom towards center |
+| `zoom_out` | Slow zoom away |
+| `pan_left/right/up/down` | Directional drift |
+| `focus` | Zoom towards specific point |
+| `parallax` | Depth-based scrolling |
+| `ken_burns` | Classic documentary zoom |
+| `static` | No movement |
+
+### Test Animations
+
+Run the Remotion preview to see all animations:
+
+```bash
+cd remotion
+npm run dev
+# Open http://localhost:3000 and select "AnimationShowcase"
+```
+
+---
+
 ## Architecture
 
 ### Core Principle: Pure LLM Judgment, Zero Parsing
@@ -32,7 +100,6 @@ Every decision is made by an LLM with appropriate expertise. No regex, no keywor
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         CAPTURE PHASE                                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
 │  intake ──────→ Validates project path exists                              │
 │      ↓                                                                      │
 │  analyze ─────→ Video strategy expert. Decides what to capture.            │
@@ -40,27 +107,22 @@ Every decision is made by an LLM with appropriate expertise. No regex, no keywor
 │  capture ─────→ Parallel execution. Screenshots & recordings.              │
 │      ↓                                                                      │
 │  aggregate ───→ Collects results, status → 'aggregated'                    │
-│                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                         EDITOR PHASE                                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
 │  planner ─────→ Creative director. Designs video timeline.                 │
-│                 Creates "moments" (clip_tasks) with rich notes.            │
 │      ↓                                                                      │
-│  composer ────→ Motion graphics technician. Builds layer specs.            │
-│                 - Image layers (original assets)                           │
-│                 - Generated image layers (AI-enhanced)                     │
-│                 - Text layers (typography)                                 │
+│  composer ────→ Motion graphics expert. Builds layer specs.                │
 │      ↓                                                                      │
 │  assembler ───→ Collects specs → VideoSpec JSON for Remotion               │
 │      ↓                                                                      │
 │  render ──────→ Remotion CLI produces final MP4                            │
-│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Layer-Based Architecture (Editor Phase)
+---
+
+## Layer-Based Architecture
 
 Each clip is a **self-contained moment** with multiple layers:
 
@@ -68,34 +130,21 @@ Each clip is a **self-contained moment** with multiple layers:
 ┌─────────────────────────────────────────────────────────────┐
 │  Clip: "Hero Moment" (0-3s)                                │
 ├─────────────────────────────────────────────────────────────┤
-│                                                             │
 │  Layer 3 (zIndex: 3): Text "FOCUS"                         │
-│    - Appears at 0.5s, typewriter animation                 │
-│    - 80px, bold, white, centered                           │
+│    - animation: "typewriter"                               │
+│    - feel: "snappy"                                        │
 │                                                             │
-│  Layer 2 (zIndex: 2): AI-Enhanced Dashboard                │
-│    - Glowing version, fades IN (0→1 opacity)               │
-│    - Subtle zoom towards task counter                      │
+│  Layer 2 (zIndex: 2): AI-Generated Image                   │
+│    - opacity: 0 → 1 (crossfade in)                         │
 │                                                             │
 │  Layer 1 (zIndex: 1): Original Screenshot                  │
-│    - Plain dashboard, fades OUT (1→0 opacity)              │
-│    - Same zoom animation                                   │
+│    - opacity: 1 → 0 (crossfade out)                        │
+│    - transform: zoom_in                                    │
 │                                                             │
+│  Layer 0 (zIndex: 0): Background                           │
+│    - orbs: true, orbColors: ["#6366f1", "#8b5cf6"]         │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-### Why Layers?
-
-**Before (rigid):**
-- Planner creates clip_task (image only)
-- Planner creates text_task (text only)
-- Two separate things the assembler has to sync
-
-**Now (flexible):**
-- Planner creates clip_task with rich creative intent
-- Composer interprets and decides what layers to create
-- Text, AI enhancements, transitions - all in one spec
-- Each moment is self-contained
 
 ### Example VideoSpec
 
@@ -114,35 +163,36 @@ Each clip is a **self-contained moment** with multiple layers:
       "durationFrames": 90,
       "layers": [
         {
+          "type": "background",
+          "zIndex": 0,
+          "color": "#030712",
+          "orbs": true,
+          "orbColors": ["#6366f1", "#8b5cf6"]
+        },
+        {
           "type": "image",
           "src": "dashboard.png",
           "zIndex": 1,
-          "transform": { "type": "zoom_in", "startScale": 1.0, "endScale": 1.15 },
-          "opacity": { "start": 1, "end": 0 }
-        },
-        {
-          "type": "generated_image",
-          "src": "dashboard_glowing.png",
-          "zIndex": 2,
-          "transform": { "type": "zoom_in", "startScale": 1.0, "endScale": 1.15 },
-          "opacity": { "start": 0, "end": 1 }
+          "transform": { "type": "zoom_in", "startScale": 1.0, "endScale": 1.08 },
+          "device": "iphone"
         },
         {
           "type": "text",
-          "content": "FOCUS",
-          "zIndex": 3,
-          "style": { "fontSize": 80, "fontWeight": 800, "color": "#FFFFFF" },
-          "animation": { "enter": "typewriter", "exit": "fade" },
-          "position": { "preset": "center" },
-          "startFrame": 15,
-          "durationFrames": 60
+          "content": "ORGANIZE",
+          "zIndex": 2,
+          "style": { "fontSize": 120, "fontWeight": 800, "color": "#FFFFFF" },
+          "animation": { "enter": "pop", "exit": "fade", "feel": "bouncy" },
+          "position": { "preset": "bottom" },
+          "startFrame": 0,
+          "durationFrames": 90
         }
-      ],
-      "enterTransition": { "type": "fade", "durationFrames": 15 }
+      ]
     }
   ]
 }
 ```
+
+---
 
 ## Project Structure
 
@@ -151,93 +201,44 @@ src/
 ├── config.py                 # API keys, paths, settings
 ├── main.py                   # Entry point
 ├── orchestrator/             # Capture phase
-│   ├── state.py              # PipelineState
-│   ├── intake.py             # Path validation
-│   ├── analyzer.py           # Video strategy
-│   ├── capturer.py           # Asset capture
-│   ├── aggregate.py          # Result collection
-│   └── graph.py              # LangGraph wiring
+│   ├── state.py              
+│   ├── intake.py             
+│   ├── analyzer.py           
+│   ├── capturer.py           
+│   ├── aggregate.py          
+│   └── graph.py              
 ├── editor/                   # Editor phase
-│   ├── state.py              # EditorState, Layer types
-│   ├── planner.py            # Creative director
-│   ├── clip_composer.py      # Layer composition
-│   ├── assembler.py          # VideoSpec assembly
-│   ├── loader.py             # State loading
-│   └── graph.py              # Editor graph
+│   ├── state.py              # Full animation type definitions
+│   ├── planner.py            
+│   ├── clip_composer.py      # 14 animation types in prompt
+│   ├── assembler.py          
+│   ├── loader.py             
+│   └── graph.py              
 ├── tools/
-│   ├── bash_tools.py         # Shell commands
-│   ├── capture_tools.py      # xcrun simctl wrappers
 │   ├── editor_tools.py       # Clip/layer tools
-│   └── validation_tool.py    # Multimodal validation
-├── renderer/                 # Remotion integration
-│   └── render_client.py      # CLI wrapper
+│   └── ...
+├── renderer/                 
+│   └── render_client.py      
 └── db/
-    ├── migrations/
-    │   ├── 001_initial_schema.sql
-    │   ├── 002_editor_tables.sql
-    │   └── 003_layer_based_clips.sql
     └── supabase_client.py
+
+remotion/
+├── src/
+│   ├── components/
+│   │   ├── AnimatedText.tsx  # 7 text animation components
+│   │   ├── SlideIn.tsx       # 4 directions + feel param
+│   │   ├── ScaleIn.tsx       # Scale + PopIn + ZoomIn
+│   │   ├── FadeIn.tsx        # Fade + FadeInOut
+│   │   ├── Background.tsx    # 6 background types
+│   │   ├── KenBurns.tsx      # 10 image transforms
+│   │   └── index.ts          
+│   ├── compositions/
+│   │   ├── ProductVideo.tsx  # Main renderer
+│   │   └── AnimationShowcase.tsx  # Visual test
+│   └── Root.tsx
 ```
 
-## Database Schema
-
-```sql
--- Video project: THE complete record of a production job
-create table video_projects (
-    id uuid primary key,
-    user_input text not null,
-    project_path text,
-    app_bundle_id text,
-    analysis_summary text,
-    status text default 'analyzed',
-    editor_status text,  -- 'planning' | 'composing' | 'assembled' | 'rendered'
-    created_at timestamptz,
-    updated_at timestamptz
-);
-
--- Capture tasks: screenshot/recording jobs
-create table capture_tasks (
-    id uuid primary key,
-    video_project_id uuid references video_projects(id),
-    task_description text not null,
-    capture_type text not null,  -- 'screenshot' | 'recording'
-    asset_path text,
-    validation_notes text,
-    status text default 'pending'
-);
-
--- Clip tasks: "moments" in the video with rich creative notes
-create table clip_tasks (
-    id uuid primary key,
-    video_project_id uuid references video_projects(id),
-    asset_path text,
-    start_time_s float not null,
-    duration_s float not null,
-    composer_notes text not null,  -- Rich creative direction
-    clip_spec jsonb,               -- Layer-based composition
-    status text default 'pending'
-);
-
--- Generated assets: AI-enhanced images
-create table generated_assets (
-    id uuid primary key,
-    video_project_id uuid references video_projects(id),
-    clip_task_id uuid references clip_tasks(id),
-    prompt text not null,
-    asset_path text,
-    asset_url text,
-    status text default 'pending'
-);
-
--- Video specs: Final Remotion-ready JSON
-create table video_specs (
-    id uuid primary key,
-    video_project_id uuid references video_projects(id),
-    spec jsonb not null,
-    version int default 1,
-    render_status text default 'pending'
-);
-```
+---
 
 ## Quick Start
 
@@ -245,8 +246,10 @@ create table video_specs (
 pip install -r requirements.txt
 cp .env.example .env  # Fill in API keys
 
-# Run migrations in Supabase
-# Then:
+# Start Remotion preview
+cd remotion && npm install && npm run dev
+
+# Run the pipeline
 python -m src.main
 ```
 
@@ -258,72 +261,30 @@ SUPABASE_URL=...             # Your Supabase project URL
 SUPABASE_KEY=...             # Secret key (service_role)
 ```
 
-## Running the Editor Phase
-
-```python
-from editor import run_editor_standalone
-
-# After capture phase completes (status='aggregated')
-result = run_editor_standalone("video-project-uuid")
-
-# Access the VideoSpec
-print(result["video_spec"])
-```
-
-## Status Flow
-
-### Capture Phase
-```
-analyzed → capturing → aggregated
-```
-
-### Editor Phase
-```
-planning → composing → assembled → rendering → rendered
-```
+---
 
 ## Design Principles
 
-1. **Layer-Based Composition**
+1. **Full Animation Arsenal**
+   - 14 text animations, 6 backgrounds, 10 transforms
+   - Spring physics control via `feel` parameter
+   - All exposed to the Composer agent
+
+2. **Unified Image Type**
+   - All images use `"type": "image"` with a `src` path
+   - No distinction between captured and generated
+
+3. **Layer-Based Composition**
    - Each clip is a stack of composited layers
-   - Text is a layer, not a separate track
-   - AI enhancements are layers with opacity transitions
+   - Text, images, backgrounds can all coexist
+   - Z-index controls stacking order
 
-2. **Rich Creative Direction**
-   - Planner writes full creative intent in `composer_notes`
-   - Composer interprets and builds technical layers
-   - No lossy field extraction
-
-3. **Every State Change via Tool Call**
+4. **Every State Change via Tool Call**
    - `create_clip_task()` → writes to DB
    - `submit_clip_spec()` → writes layer spec
    - No parsing LLM output
 
-4. **Flexible Moments**
-   - Simple clip: 1 image layer
-   - Enhanced clip: original + AI version (crossfade)
-   - Rich clip: image + generated + text layers
-
-## Example Creative Flow
-
-**Planner creates:**
-```
-"Hero moment - make this MAGICAL. Start with plain dashboard, 
-crossfade to glowing AI-enhanced version. Add 'NEVER FORGET' 
-text that types in at 0.5s. Slow zoom to task counter. 
-Premium, confident energy."
-```
-
-**Composer produces:**
-```json
-{
-  "layers": [
-    { "type": "image", "src": "dashboard.png", "opacity": {"start": 1, "end": 0} },
-    { "type": "generated_image", "src": "dashboard_glow.png", "opacity": {"start": 0, "end": 1} },
-    { "type": "text", "content": "NEVER FORGET", "animation": {"enter": "typewriter"} }
-  ]
-}
-```
+---
 
 ## Troubleshooting
 
@@ -332,10 +293,12 @@ Premium, confident energy."
 xcrun simctl boot "iPhone 15 Pro"
 ```
 
-**"No composed specs found"**
-- Check `clip_tasks` table for `status='composed'`
-- Run composer again if stuck at 'pending'
+**Animation not working?**
+```bash
+cd remotion && npm run dev
+# Select "AnimationShowcase" to verify all animations work
+```
 
-**"Generated asset not rendering"**
-- Check `generated_assets.status` = 'success'
-- Verify `asset_url` is populated
+**Composer not using new animations?**
+- Check `clip_composer.py` has the updated prompt with all 14 animations
+- The `state.py` must have the animation types in `TextAnimationSpec`
