@@ -199,6 +199,13 @@ SCREEN IDENTIFIED:
 ISSUES FOUND:
 [Any problems, or "None" if clean]
 
+VISUAL DESIGN (note these for video styling):
+- Theme: light or dark
+- Background color: approximate hex (e.g., #F5F2ED)
+- Text color: approximate hex
+- Accent colors: any prominent UI colors
+- Aesthetic: (e.g., minimal, playful, premium, technical)
+
 VERDICT:
 [Either "SUCCESS: [brief reason]" or "FAILED: [specific reason why not usable]"]
 """

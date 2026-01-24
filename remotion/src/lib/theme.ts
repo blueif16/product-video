@@ -3,16 +3,24 @@
  * 
  * All colors, fonts, spacing used across compositions.
  * Ensures visual consistency throughout videos.
+ * 
+ * Supports BOTH light and dark themes for app-matching videos.
  */
 
 export const theme = {
   colors: {
-    // Backgrounds
+    // Dark theme backgrounds (default)
     background: "#0f172a",
     backgroundDark: "#020617",
     backgroundLight: "#1e293b",
     
-    // Brand
+    // Light theme backgrounds
+    backgroundCream: "#faf5ef",
+    backgroundWhite: "#ffffff",
+    backgroundLightGray: "#f5f5f5",
+    backgroundWarm: "#fefcf9",
+    
+    // Brand (works on both themes)
     primary: "#6366f1",
     primaryLight: "#818cf8",
     primaryDark: "#4f46e5",
@@ -23,14 +31,20 @@ export const theme = {
     success: "#22c55e",
     warning: "#f59e0b",
     
-    // Text
+    // Text for dark backgrounds
     text: "#ffffff",
     textMuted: "#94a3b8",
     textDark: "#64748b",
     
+    // Text for light backgrounds
+    textOnLight: "#1a1a1a",
+    textMutedOnLight: "#4a5568",
+    textDarkOnLight: "#2d3748",
+    
     // Overlays
     overlayDark: "rgba(0, 0, 0, 0.6)",
     overlayLight: "rgba(255, 255, 255, 0.1)",
+    overlayOnLight: "rgba(0, 0, 0, 0.05)",
   },
   
   fonts: {
@@ -68,16 +82,29 @@ export const theme = {
   },
   
   shadows: {
+    // For dark backgrounds
     small: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
     medium: "0 10px 15px -3px rgba(0, 0, 0, 0.2)",
     large: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
     glow: (color: string) => `0 0 80px ${color}80`,
+    
+    // For light backgrounds (softer)
+    smallLight: "0 2px 4px rgba(0, 0, 0, 0.05)",
+    mediumLight: "0 4px 12px rgba(0, 0, 0, 0.08)",
+    largeLight: "0 12px 40px rgba(0, 0, 0, 0.12)",
+    subtleGlow: (color: string) => `0 0 40px ${color}40`,
   },
   
   gradients: {
+    // Dark theme gradients
     primary: "linear-gradient(135deg, #6366f1 0%, #ec4899 100%)",
     dark: "linear-gradient(180deg, #0f172a 0%, #020617 100%)",
     radialGlow: (color: string) => `radial-gradient(circle, ${color}40 0%, transparent 70%)`,
+    
+    // Light theme gradients
+    warmLight: "linear-gradient(180deg, #faf5ef 0%, #f0e6d8 100%)",
+    softLight: "linear-gradient(180deg, #ffffff 0%, #f5f5f5 100%)",
+    creamToWhite: "linear-gradient(180deg, #fefcf9 0%, #ffffff 100%)",
   },
   
   borderRadius: {
@@ -117,6 +144,24 @@ export const theme = {
     },
   },
 } as const;
+
+// Helper functions for dynamic theme selection
+export const getBackgroundColor = (isLight: boolean): string => {
+  return isLight ? theme.colors.backgroundCream : theme.colors.backgroundDark;
+};
+
+export const getTextColor = (isLight: boolean): string => {
+  return isLight ? theme.colors.textOnLight : theme.colors.text;
+};
+
+export const getTextShadow = (isLight: boolean, color?: string): string => {
+  if (isLight) {
+    return "0 2px 8px rgba(0, 0, 0, 0.1)";
+  }
+  return color 
+    ? `0 4px 30px ${color}80` 
+    : "0 4px 30px rgba(0, 0, 0, 0.5)";
+};
 
 // Type exports
 export type ThemeColors = keyof typeof theme.colors;

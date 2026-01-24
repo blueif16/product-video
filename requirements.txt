@@ -4,6 +4,7 @@ langgraph-prebuilt>=0.1.0
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-google-genai>=4.2.0
+google-genai>=1.0.0  # For Gemini image generation
 
 # Database
 supabase>=2.0.0

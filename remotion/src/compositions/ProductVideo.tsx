@@ -354,6 +354,14 @@ const ImageLayerRenderer: React.FC<{
     return null;
   }
 
+  // Handle relative paths (from remotion/public/) with staticFile()
+  let imageSrc = layer.src;
+  if (!layer.src.startsWith("http://") && !layer.src.startsWith("https://")) {
+    // Strip leading slash if present, staticFile() expects relative paths
+    const cleanPath = layer.src.startsWith("/") ? layer.src.slice(1) : layer.src;
+    imageSrc = staticFile(cleanPath);
+  }
+
   // Opacity animation (for crossfades)
   let opacity = 1;
   if (layer.opacity) {
@@ -366,6 +374,8 @@ const ImageLayerRenderer: React.FC<{
   // Device frame handling
   const device = "device" in layer ? layer.device : undefined;
   if (device && device !== "none") {
+    // Clean path for DeviceFrame (strip leading slash for staticFile)
+    const cleanScreenshotPath = layer.src.startsWith("/") ? layer.src.slice(1) : layer.src;
     return (
       <AbsoluteFill
         style={{
@@ -376,7 +386,7 @@ const ImageLayerRenderer: React.FC<{
         }}
       >
         <DeviceFrame
-          screenshot={layer.src}
+          screenshot={cleanScreenshotPath}
           device={device}
           scale={device === "macbook" ? 0.6 : device === "ipad" ? 0.55 : 0.8}
           animated={false}

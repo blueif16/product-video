@@ -77,12 +77,12 @@ class FullPipelineState(TypedDict):
 def capture_to_editor_bridge(state: FullPipelineState) -> dict:
     """
     Bridge node: Load captured assets from DB into state for editor.
-    
+
     This is where the database contract is fulfilled.
     The capture phase writes to video_projects + capture_tasks,
     and this node reads those tables to populate editor state.
     """
-    from editor.loader import load_editor_state
+    from editor.core.loader import load_editor_state
     
     video_project_id = state.get("video_project_id")
     
@@ -172,10 +172,10 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
     # ─────────────────────────────────────────────────────────
     # Import editor phase nodes
     # ─────────────────────────────────────────────────────────
-    from editor.planner import edit_planner_node
-    from editor.clip_composer import compose_all_clips_node
-    from editor.assembler import edit_assembler_node
-    from editor.graph import route_after_planning, should_render, should_generate_music
+    from editor.planners import edit_planner_node
+    from editor.composers import compose_all_clips_node
+    from editor.core.assembler import edit_assembler_node
+    from editor.graph import should_render, should_generate_music
     
     # ─────────────────────────────────────────────────────────
     # Add Capture Phase Nodes
@@ -206,7 +206,7 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
     # Add Music Phase Nodes (runs AFTER render)
     # ─────────────────────────────────────────────────────────
     if include_music:
-        from editor.music_planner import music_planner_node
+        from editor.core.music_planner import music_planner_node
         from tools.music_generator import music_generator_node, mux_audio_video_node
         
         builder.add_node("music_plan", music_planner_node)
@@ -244,16 +244,7 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
     # Editor Phase Edges
     # ─────────────────────────────────────────────────────────
     builder.add_edge("bridge", "planner")
-    
-    builder.add_conditional_edges(
-        "planner",
-        route_after_planning,
-        {
-            "compose_clips": "compose_clips",
-            "assemble": "assemble",
-        }
-    )
-
+    builder.add_edge("planner", "compose_clips")
     builder.add_edge("compose_clips", "assemble")
     
     if include_render:

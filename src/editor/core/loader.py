@@ -120,7 +120,7 @@ def load_editor_state(video_project_id: str) -> EditorState:
             "Run capture phase first."
         )
     
-    # Load successful captures (may be empty for text-only videos)
+    # Load successful captures for THIS project only (may be empty for text-only videos)
     captures_result = client.table("capture_tasks").select("*").eq(
         "video_project_id", video_project_id
     ).eq(
@@ -132,11 +132,12 @@ def load_editor_state(video_project_id: str) -> EditorState:
     assets = []
     for c in captures:
         path = c["asset_path"]
+        url = c.get("asset_url")  # Cloud URL (preferred)
         description = c["task_description"]
         capture_type = c["capture_type"]
         
-        # Try to get actual dimensions from file
-        width, height = get_image_dimensions(path)
+        # Try to get actual dimensions from file (if local path exists)
+        width, height = get_image_dimensions(path) if path else (0, 0)
         
         # Default dimensions if file not found
         if width == 0 and height == 0:
@@ -153,16 +154,20 @@ def load_editor_state(video_project_id: str) -> EditorState:
             height,
         )
         
+        # Cloud-first: include both path and URL, prefer URL for rendering
         assets.append({
             "id": c["id"],
             "path": path,
-            "description": formatted_desc,  # Dimensions are now in here
+            "url": url,  # Cloud URL when available
+            "description": formatted_desc,
         })
     
     # NOTE: Empty assets is valid for text-only videos
     # The planner will create text-only clips using user_input as guidance
     if not assets:
         print("   ℹ️  No captured assets - this is a text-only video")
+    else:
+        print(f"   Loaded {len(assets)} assets")
     
     return EditorState(
         video_project_id=video_project_id,
@@ -211,9 +216,9 @@ def create_test_state(
     
     Test assets have dimensions baked into description:
         "Main dashboard showing task list [1170×2532, screenshot]"
-    
+
     Usage:
-        from editor.loader import create_test_state
+        from editor.core.loader import create_test_state
         state = create_test_state()
         # Text-only test:
         state = create_test_state(text_only=True)
@@ -248,30 +253,36 @@ def create_test_state(
         )
     
     # Default assets with dimensions in description (the new format)
+    # Note: url=None for test assets (no cloud upload in test mode)
     default_assets = [
         {
             "id": "asset-001",
             "path": "/assets/captures/dashboard.png",
+            "url": None,  # No cloud URL in test mode
             "description": "Main dashboard showing task list with 5 sample tasks, clean UI [1170×2532, screenshot]",
         },
         {
             "id": "asset-002",
             "path": "/assets/captures/quick_add.png",
+            "url": None,
             "description": "Quick task entry modal with keyboard visible, placeholder text 'Add a task...' [1170×2532, screenshot]",
         },
         {
             "id": "asset-003",
             "path": "/assets/captures/swipe_complete.mov",
+            "url": None,
             "description": "2-second recording of swipe-to-complete gesture on a task [1170×2532, recording]",
         },
         {
             "id": "asset-004",
             "path": "/assets/captures/focus_timer.png",
+            "url": None,
             "description": "Focus timer screen showing 25:00 countdown with calming purple gradient [1170×2532, screenshot]",
         },
         {
             "id": "asset-005",
             "path": "/assets/captures/completed_tasks.png",
+            "url": None,
             "description": "Completed tasks view showing checked-off items with subtle strikethrough [1170×2532, screenshot]",
         },
     ]

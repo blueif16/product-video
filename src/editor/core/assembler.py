@@ -7,16 +7,85 @@ into a complete VideoSpec for Remotion.
 This is NOT an LLM agent - it's a deterministic assembly process.
 The creative decisions were made by planner/composers.
 
-## Simplification: Unified Image Type
+## Asset Path Handling
 
-All image layers are now just "image" type with a src path.
-No special handling for "generated_image" - it doesn't exist anymore.
-The composer already put the correct paths in place.
-
-Assembler just reads the layers and passes them to Remotion.
+The assembler copies all image assets to Remotion's public/assets directory
+and updates paths to be relative paths that Remotion can access.
 """
 from typing import Optional
 import json
+import os
+import shutil
+from pathlib import Path
+
+
+def copy_asset_to_remotion(src_path: str, video_project_id: str) -> str:
+    """
+    Prepare an asset for Remotion rendering.
+    
+    Cloud-first: URLs pass through directly. Local files are copied to public/assets.
+    
+    Args:
+        src_path: Asset source (URL or local path)
+        video_project_id: Project ID for organizing local assets
+    
+    Returns:
+        URL (unchanged) or relative path for Remotion
+    """
+    from tools.storage import is_remote_url
+    
+    # Cloud URLs pass through directly - Remotion handles them
+    if is_remote_url(src_path):
+        return src_path
+    
+    # Local file: copy to Remotion's public directory
+    if not os.path.exists(src_path):
+        print(f"   ⚠️  Asset not found: {src_path}")
+        return src_path  # Return original, will fail in Remotion
+    
+    remotion_public = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "remotion", "public", "assets", video_project_id
+    )
+    os.makedirs(remotion_public, exist_ok=True)
+    
+    filename = os.path.basename(src_path)
+    dest_path = os.path.join(remotion_public, filename)
+    
+    try:
+        shutil.copy2(src_path, dest_path)
+        return f"assets/{video_project_id}/{filename}"
+    except Exception as e:
+        print(f"   ⚠️  Failed to copy {src_path}: {e}")
+        return src_path
+
+
+def process_layer_assets(layer: dict, video_project_id: str) -> dict:
+    """
+    Process a layer and prepare assets for Remotion.
+    
+    Cloud URLs pass through. Local files are copied to public/assets.
+    """
+    from tools.storage import is_remote_url
+    
+    layer = layer.copy()  # Don't modify original
+    
+    if layer.get("type") == "image" and layer.get("src"):
+        src = layer["src"]
+        
+        # Skip if already processed (relative path or URL)
+        if src.startswith("assets/") or is_remote_url(src):
+            if is_remote_url(src):
+                print(f"   ☁️  Using cloud URL: ...{src[-40:]}")
+            return layer
+        
+        # Process: copy local file or pass through URL
+        new_path = copy_asset_to_remotion(src, video_project_id)
+        layer["src"] = new_path
+        
+        if not is_remote_url(new_path):
+            print(f"   📁 Copied: {os.path.basename(src)} → {new_path}")
+    
+    return layer
 
 
 def assemble_video_spec(
@@ -32,8 +101,7 @@ def assemble_video_spec(
     - clip_tasks (status='composed')
     - video_projects (for metadata)
     
-    No special handling needed for different image types.
-    All images have src paths already set by the composer.
+    Copies all image assets to Remotion's public directory and updates paths.
     
     Returns:
         Complete VideoSpec dict ready for Remotion
@@ -58,6 +126,8 @@ def assemble_video_spec(
     if not clip_tasks:
         raise ValueError("No composed specs found. Run composers first.")
     
+    print(f"   Processing {len(clip_tasks)} clips...")
+    
     # Build clips array
     clips = []
     for task in clip_tasks:
@@ -66,11 +136,18 @@ def assemble_video_spec(
         # Calculate start frame from start_time_s
         start_frame = int(task["start_time_s"] * fps)
         
+        # Process layers - copy assets and update paths
+        layers = spec.get("layers", [])
+        processed_layers = [
+            process_layer_assets(layer, video_project_id)
+            for layer in layers
+        ]
+        
         clip = {
             "id": task["id"],
             "startFrame": start_frame,
             "durationFrames": spec.get("durationFrames", int(task["duration_s"] * fps)),
-            "layers": spec.get("layers", []),  # Layers already have correct src paths
+            "layers": processed_layers,
             "composerNotes": spec.get("composerNotes", ""),
         }
         
@@ -79,10 +156,6 @@ def assemble_video_spec(
             clip["enterTransition"] = spec["enterTransition"]
         if spec.get("exitTransition"):
             clip["exitTransition"] = spec["exitTransition"]
-        
-        # NOTE: No special handling for generated_image layers anymore.
-        # All images are just "image" type with src already set.
-        # The composer took care of putting the right paths in place.
         
         clips.append(clip)
     
@@ -184,10 +257,13 @@ def validate_video_spec(spec: dict) -> tuple[bool, list[str]]:
 def save_video_spec_to_db(
     video_project_id: str,
     spec: dict,
-    version: int = 1,
+    version: int = None,
 ) -> str:
     """
     Save the VideoSpec to the database.
+    
+    Automatically increments version if one exists.
+    Uses upsert to avoid duplicate key errors when re-running.
     
     Returns:
         The video_spec_id
@@ -196,14 +272,28 @@ def save_video_spec_to_db(
     
     client = get_client()
     
-    result = client.table("video_specs").insert({
+    # Get the latest version for this project
+    if version is None:
+        existing = client.table("video_specs").select("version").eq(
+            "video_project_id", video_project_id
+        ).order("version", desc=True).limit(1).execute()
+        
+        if existing.data:
+            version = existing.data[0]["version"] + 1
+        else:
+            version = 1
+    
+    # Use upsert with on_conflict to handle re-runs
+    # This prevents duplicate key errors if you run the editor phase multiple times
+    result = client.table("video_specs").upsert({
         "video_project_id": video_project_id,
         "spec": spec,
         "version": version,
         "render_status": "pending",
-    }).execute()
+    }, on_conflict="video_project_id,version").execute()
     
     if result.data:
+        print(f"   Saved as version {version}")
         return result.data[0]["id"]
     else:
         raise ValueError("Failed to save video spec")
@@ -264,7 +354,7 @@ def edit_assembler_node(state: dict) -> dict:
     video_project_id = state["video_project_id"]
     
     try:
-        # Assemble the spec
+        # Assemble the spec (this will copy assets)
         spec = assemble_video_spec(video_project_id)
         
         # Validate

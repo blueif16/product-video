@@ -8,6 +8,7 @@ import os
 import json
 from typing import Optional
 from pathlib import Path
+from tools.storage import upload_asset
 
 
 # ─────────────────────────────────────────────────────────────
@@ -256,22 +257,38 @@ def remotion_render_node(state: dict) -> dict:
     
     if success:
         print(f"\n✓ Render complete: {output_path}")
-        
+
+        # Upload video to cloud storage
+        try:
+            print(f"📤 Uploading video to cloud storage...")
+            video_url = upload_asset(
+                local_path=output_path,
+                project_id=video_project_id,
+                bucket="captures",  # Use same bucket as other assets
+                subfolder="renders"  # Store in renders subfolder
+            )
+            print(f"✅ Video uploaded: {video_url}")
+        except Exception as e:
+            print(f"⚠️ Cloud upload failed: {e}")
+            video_url = output_path  # Fallback to local path
+
         # Update DB
         if video_spec_id:
             client.table("video_specs").update({
                 "render_status": "complete",
-                "render_path": output_path,
+                "render_path": video_url,  # Use cloud URL
                 "render_completed_at": "now()",
             }).eq("id", video_spec_id).execute()
-        
+
         client.table("video_projects").update({
             "editor_status": "rendered",
+            "final_video_path": video_url,  # Store cloud URL in project
         }).eq("id", video_project_id).execute()
-        
+
         return {
             "render_status": "complete",
-            "render_path": output_path,
+            "render_path": video_url,  # Return cloud URL
+            "final_video_path": video_url,
         }
     else:
         print(f"\n❌ Render failed: {error}")

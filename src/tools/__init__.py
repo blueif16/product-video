@@ -45,6 +45,14 @@ from .capture_tools import (
 
 from .validation_tool import validate_capture, get_recording_action_log, verify_screen
 
+from .hitl_tools import (
+    request_human_guidance,
+    report_exploration_stuck,
+    check_exploration_budget,
+    reset_exploration_state,
+    get_exploration_state,
+)
+
 # Editor tools (for reference, import directly from editor_tools.py)
 from .editor_tools import (
     # Planner tools
@@ -114,8 +122,12 @@ CAPTURER_TOOLS = [
     
     # Validation & Verification
     validate_capture,
-    verify_screen,  # NEW: Check screen before capture
+    verify_screen,  # Check screen before capture
     get_recording_action_log,
+    
+    # Human-in-the-Loop (for when exploration gets stuck)
+    request_human_guidance,
+    check_exploration_budget,
 ]
 
 # Minimal tool set for quick screenshots only

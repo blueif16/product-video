@@ -147,7 +147,7 @@ class MusicGenerator:
         2. Uses the composition plan for precise alignment
         3. Returns the generated audio path
         """
-        from editor.music_planner import analyze_timeline_for_music
+        from editor.core.music_planner import analyze_timeline_for_music
         
         # Analyze the video timeline
         analysis = analyze_timeline_for_music(video_project_id)
@@ -492,10 +492,10 @@ def generate_music_for_project(
     2. Optionally refines the composition plan with LLM
     3. Generates the music
     4. Returns the result
-    
+
     This is the main function to call from outside the module.
     """
-    from editor.music_planner import analyze_timeline_for_music, print_music_analysis
+    from editor.core.music_planner import analyze_timeline_for_music, print_music_analysis
     
     # Analyze
     print("\n🎵 Analyzing video timeline...")

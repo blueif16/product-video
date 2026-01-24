@@ -172,7 +172,7 @@ export const CountUpText: React.FC<CountUpTextProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
-// GLITCH - Text with glitch effect then settles
+// GLITCH - Text with glitch effect then settles (FIXED VERSION)
 // ─────────────────────────────────────────────────────────────
 
 interface GlitchTextProps {
@@ -193,8 +193,13 @@ export const GlitchText: React.FC<GlitchTextProps> = ({
   const frame = useCurrentFrame();
   const effectiveFrame = frame - delay;
 
-  // Before glitch starts or after it ends: show normal text
-  if (effectiveFrame < 0 || effectiveFrame > duration) {
+  // Before glitch starts
+  if (effectiveFrame < 0) {
+    return <span style={{ ...style, opacity: 0 }}>{text}</span>;
+  }
+
+  // After glitch ends: show normal text
+  if (effectiveFrame > duration) {
     return <span style={style}>{text}</span>;
   }
 
@@ -202,16 +207,19 @@ export const GlitchText: React.FC<GlitchTextProps> = ({
   const progress = effectiveFrame / duration;
   
   // Reduce intensity as we approach the end (settle effect)
-  const currentIntensity = intensity * (1 - progress * 0.7);
+  const currentIntensity = intensity * (1 - progress * 0.8);
   
-  // Random-looking but deterministic offset based on frame
-  const seed = effectiveFrame * 7;
-  const offsetX = Math.sin(seed) * 3 * currentIntensity;
-  const offsetY = Math.cos(seed * 1.3) * 2 * currentIntensity;
-  const skew = Math.sin(seed * 2.1) * 2 * currentIntensity;
+  // Deterministic pseudo-random based on frame for consistent renders
+  const seed = effectiveFrame * 7.13;
+  const offsetX = Math.sin(seed) * 4 * currentIntensity;
+  const offsetY = Math.cos(seed * 1.3) * 3 * currentIntensity;
+  const skew = Math.sin(seed * 2.1) * 3 * currentIntensity;
   
-  // Color split effect
-  const colorOffset = Math.sin(seed * 0.5) * 2 * currentIntensity;
+  // Color split offset
+  const colorOffset = Math.abs(Math.sin(seed * 0.5)) * 3 * currentIntensity;
+  
+  // Opacity for chromatic layers (fade in as glitch progresses)
+  const chromaticOpacity = interpolate(progress, [0, 0.3, 1], [0.6, 0.4, 0]);
 
   return (
     <span
@@ -221,40 +229,74 @@ export const GlitchText: React.FC<GlitchTextProps> = ({
         ...style,
       }}
     >
-      {/* Red shadow (offset left) */}
+      {/* Cyan/blue shadow (offset left) - BEHIND main text */}
       <span
         style={{
           position: "absolute",
-          left: -colorOffset,
+          left: 0,
           top: 0,
-          color: "rgba(255, 0, 0, 0.5)",
-          mixBlendMode: "screen",
+          transform: `translateX(${-colorOffset}px)`,
+          color: "#00ffff",
+          opacity: chromaticOpacity,
+          filter: "blur(0.5px)",
+          zIndex: 1,
         }}
+        aria-hidden="true"
       >
         {text}
       </span>
-      {/* Cyan shadow (offset right) */}
+      
+      {/* Red/magenta shadow (offset right) - BEHIND main text */}
       <span
         style={{
           position: "absolute",
-          left: colorOffset,
+          left: 0,
           top: 0,
-          color: "rgba(0, 255, 255, 0.5)",
-          mixBlendMode: "screen",
+          transform: `translateX(${colorOffset}px)`,
+          color: "#ff0040",
+          opacity: chromaticOpacity,
+          filter: "blur(0.5px)",
+          zIndex: 1,
         }}
+        aria-hidden="true"
       >
         {text}
       </span>
-      {/* Main text */}
+      
+      {/* Main text with position jitter */}
       <span
         style={{
           position: "relative",
-          transform: `translate(${offsetX}px, ${offsetY}px) skewX(${skew}deg)`,
           display: "inline-block",
+          transform: `translate(${offsetX}px, ${offsetY}px) skewX(${skew}deg)`,
+          zIndex: 2,
         }}
       >
         {text}
       </span>
+      
+      {/* Scanline effect during intense glitch */}
+      {currentIntensity > 0.3 && (
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            background: `repeating-linear-gradient(
+              0deg,
+              transparent,
+              transparent 2px,
+              rgba(0, 0, 0, 0.1) 2px,
+              rgba(0, 0, 0, 0.1) 4px
+            )`,
+            pointerEvents: "none",
+            zIndex: 3,
+          }}
+          aria-hidden="true"
+        />
+      )}
     </span>
   );
 };
