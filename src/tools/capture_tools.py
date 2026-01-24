@@ -127,6 +127,46 @@ def _log_action(session_id: str, action: str) -> Optional[dict]:
     return entry
 
 
+def _check_navigation_budget(action_name: str, action_detail: str = "") -> Optional[str]:
+    """
+    Check if navigation budget is exceeded. If not, record the navigation attempt.
+    
+    Args:
+        action_name: Name of the action (tap, swipe, open_url)
+        action_detail: Details to log (e.g., coordinates)
+    
+    Returns:
+        None if OK to proceed, or error string if limit exceeded.
+    """
+    # Import here to avoid circular dependency
+    from tools.hitl_tools import get_exploration_state
+    
+    state = get_exploration_state()
+    
+    # Check BEFORE incrementing
+    if state.navigation_attempts >= Config.MAX_NAVIGATION_ATTEMPTS:
+        return (
+            f"\n🛑 NAVIGATION LIMIT REACHED: You've made {state.navigation_attempts} navigation attempts "
+            f"(max: {Config.MAX_NAVIGATION_ATTEMPTS}).\n"
+            f"Target: {state.target_description}\n\n"
+            f"You MUST now either:\n"
+            f"  1. Call request_human_guidance() to ask for help\n"
+            f"  2. Call report_capture_result(success=False, ...) to fail this task\n\n"
+            f"You CANNOT continue navigating blindly."
+        )
+    
+    # Record this attempt (increment counter)
+    action_str = f"{action_name}:{action_detail}" if action_detail else action_name
+    state.record_navigation(action_str)
+    
+    # Warn if getting close to limit
+    remaining = Config.MAX_NAVIGATION_ATTEMPTS - state.navigation_attempts
+    if remaining == 5:
+        print(f"   ⚠️  Navigation budget low: {remaining} attempts left", flush=True)
+    
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT SETUP
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -325,6 +365,11 @@ def open_url(url: str, wait_after: float = 1.5) -> str:
     Returns:
         Success message or error
     """
+    # Check navigation budget (also records the attempt)
+    budget_error = _check_navigation_budget("open_url", url[:50])
+    if budget_error:
+        return budget_error
+    
     code, _, stderr = _run_simctl(["openurl", "booted", url], timeout=15)
     
     if code != 0:
@@ -364,6 +409,11 @@ def tap(x: int, y: int, wait_after: float = 0.3) -> str:
     Returns:
         Success message or error
     """
+    # Check navigation budget (also records the attempt)
+    budget_error = _check_navigation_budget("tap", f"{x},{y}")
+    if budget_error:
+        return budget_error
+    
     result = None
     
     if INTERACTION_BACKEND == "idb":
@@ -541,6 +591,11 @@ def swipe(
     Returns:
         Success message or error
     """
+    # Check navigation budget (also records the attempt)
+    budget_error = _check_navigation_budget("swipe", f"{start_x},{start_y}→{end_x},{end_y}")
+    if budget_error:
+        return budget_error
+    
     result = None
     
     if INTERACTION_BACKEND == "idb":
@@ -1048,15 +1103,40 @@ def describe_screen() -> str:
     Get accessibility tree of current screen (requires idb).
     Useful for finding element positions and identifiers.
     
+    IMPORTANT: This tool has a usage limit. If you've used it too many times
+    without finding your target, you MUST call request_human_guidance.
+    
     Returns:
         JSON with UI elements, or error message if idb not available
     """
+    # Import here to avoid circular dependency
+    from tools.hitl_tools import get_exploration_state
+    
+    # Check exploration budget BEFORE executing
+    state = get_exploration_state()
+    if state.describe_calls >= Config.MAX_DESCRIBE_CALLS:
+        return (
+            f"🛑 EXPLORATION LIMIT REACHED: You've used describe_screen {state.describe_calls} times "
+            f"(max: {Config.MAX_DESCRIBE_CALLS}). You MUST now either:\n"
+            f"  1. Call request_human_guidance() to ask for help, OR\n"
+            f"  2. Call report_capture_result(success=False, ...) to fail this task.\n"
+            f"\nYou CANNOT continue exploring. Choose one of the above actions NOW."
+        )
+    
     if INTERACTION_BACKEND != "idb":
         return f"ERROR: describe_screen requires idb (current backend: {INTERACTION_BACKEND})"
     
     code, stdout, stderr = _run(["idb", "ui", "describe-all"], timeout=30)
     
     if code == 0:
+        # Record this call in exploration state
+        state.record_describe(stdout[:100] if stdout else "")
+        
+        # Add budget warning to output if getting low
+        remaining = Config.MAX_DESCRIBE_CALLS - state.describe_calls
+        if remaining <= 3:
+            stdout += f"\n\n⚠️ BUDGET WARNING: Only {remaining} describe_screen calls left. Consider calling request_human_guidance if stuck."
+        
         return stdout
     return f"ERROR: {stderr}"
 

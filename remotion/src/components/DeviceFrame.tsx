@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { useCurrentFrame, useVideoConfig, Img, spring, interpolate } from "remotion";
+import { useCurrentFrame, useVideoConfig, Img, spring, interpolate, staticFile } from "remotion";
 import { theme } from "../lib/theme";
 
 type DeviceType = "iphone" | "iphonePro" | "macbook" | "ipad";
@@ -121,7 +121,11 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
 
       {/* Screenshot */}
       <Img
-        src={screenshot}
+        src={
+          screenshot.startsWith("http://") || screenshot.startsWith("https://")
+            ? screenshot
+            : staticFile(screenshot.startsWith("/") ? screenshot.slice(1) : screenshot)
+        }
         style={{
           width: "100%",
           height: "100%",

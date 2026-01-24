@@ -30,6 +30,14 @@ class Config:
     
     # Capture settings
     CAPTURES_OUTPUT_DIR = Path(os.getenv("CAPTURES_OUTPUT_DIR", "/tmp/productvideo_captures"))
+
+    # Permanent assets (where screenshots get copied after capture for Remotion access)
+    PROJECT_ROOT = Path(__file__).parent.parent
+    PERMANENT_ASSETS_DIR = PROJECT_ROOT / "assets" / "captures"
+
+    # Supabase Storage
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "captures")
+    
     MAX_CAPTURE_ATTEMPTS = 5
     DEFAULT_RECORDING_DURATION = 8
     MODEL_NAME = "gemini-3-flash-preview"
@@ -55,6 +63,18 @@ class Config:
 
     # Debug mode - set DEBUG=1 in env to enable verbose logging
     DEBUG = os.getenv("DEBUG", "").lower() in ("1", "true", "yes")
+    
+    # ─────────────────────────────────────────────────────────────
+    # Exploration Limits (for stuck loop detection)
+    # ─────────────────────────────────────────────────────────────
+    # Max describe_screen calls before forcing HITL
+    MAX_DESCRIBE_CALLS = int(os.getenv("MAX_DESCRIBE_CALLS", "12"))
+    
+    # Max navigation attempts (taps/swipes/open_urls) without reaching target
+    MAX_NAVIGATION_ATTEMPTS = int(os.getenv("MAX_NAVIGATION_ATTEMPTS", "20"))
+    
+    # Whether to enable HITL for stuck agents (set to false for fully automated runs)
+    ENABLE_HITL = os.getenv("ENABLE_HITL", "true").lower() == "true"
     
     @classmethod
     def get_supabase_key(cls, elevated: bool = True) -> str:

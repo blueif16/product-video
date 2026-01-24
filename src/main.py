@@ -11,6 +11,10 @@ Usage:
     # Editor only (requires completed capture)
     python -m src.main --phase editor --project-id <uuid>
     
+    # Music only (add music to existing render)
+    python -m src.main --phase music --project-id <uuid>
+    python -m src.main --phase music --project-id <uuid> --video-path /path/to/video.mp4
+    
     # Editor test mode (mock data, no DB)
     python -m src.main --phase editor --test
     
@@ -232,6 +236,49 @@ def run_editor_phase(
     return result
 
 
+def run_music_phase(project_id: str, video_path: str = None) -> dict:
+    """
+    Run music generation phase only.
+    
+    This adds music to an already-rendered video.
+    """
+    from editor import run_music_only
+    from pathlib import Path
+    
+    print("\n" + "="*60)
+    print("Phase: MUSIC")
+    print("="*60)
+    
+    if not project_id:
+        print("Error: --project-id required for music phase")
+        sys.exit(1)
+    
+    # If no video_path provided, look for the rendered video
+    if not video_path:
+        default_path = Path(f"assets/renders/{project_id}.mp4")
+        if default_path.exists():
+            video_path = str(default_path)
+            print(f"\n📂 Found rendered video: {video_path}")
+        else:
+            print(f"\n⚠️  No video found at {default_path}")
+            print("   Music will be generated without muxing")
+    else:
+        print(f"\n📂 Using video: {video_path}")
+    
+    print(f"📂 Loading project: {project_id}")
+    
+    result = run_music_only(project_id, video_path=video_path)
+    
+    print("\n✅ Music phase completed!")
+    
+    if result.get("final_video_path"):
+        print(f"   🎬 Final video (with music): {result['final_video_path']}")
+    if result.get("audio_path"):
+        print(f"   🎵 Audio: {result['audio_path']}")
+    
+    return result
+
+
 def run_full_pipeline_interactive(
     user_input: str,
     include_render: bool = True,
@@ -270,6 +317,10 @@ Examples:
   # Editor without music
   python -m src.main --phase editor --project-id abc-123 --no-music
   
+  # Music phase only (add music to existing render)
+  python -m src.main --phase music --project-id abc-123
+  python -m src.main --phase music --project-id abc-123 --video-path /path/to/video.mp4
+  
   # Editor test mode
   python -m src.main --phase editor --test
   
@@ -283,14 +334,19 @@ Examples:
     
     parser.add_argument(
         "--phase",
-        choices=["capture", "editor", "full"],
+        choices=["capture", "editor", "music", "full"],
         default="full",
         help="Which phase to run (default: full)"
     )
     
     parser.add_argument(
         "--project-id",
-        help="Project UUID (required for editor phase)"
+        help="Project UUID (required for editor/music phase)"
+    )
+    
+    parser.add_argument(
+        "--video-path",
+        help="Path to rendered video (optional for music phase)"
     )
     
     parser.add_argument(
@@ -328,9 +384,18 @@ Examples:
     
     try:
         # ─────────────────────────────────────────────────────
+        # Music Phase (add music to existing video)
+        # ─────────────────────────────────────────────────────
+        if args.phase == "music":
+            run_music_phase(
+                project_id=args.project_id,
+                video_path=args.video_path,
+            )
+        
+        # ─────────────────────────────────────────────────────
         # Editor Phase
         # ─────────────────────────────────────────────────────
-        if args.phase == "editor":
+        elif args.phase == "editor":
             run_editor_phase(
                 project_id=args.project_id,
                 test_mode=args.test,

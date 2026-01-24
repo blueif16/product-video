@@ -33,6 +33,7 @@ def create_clip_task(
     duration_s: float,
     composer_notes: str,
     state: Annotated[dict, InjectedState],
+    asset_url: Optional[str] = None,
 ) -> str:
     """
     Create a clip task - a "moment" in the video timeline.
@@ -55,6 +56,7 @@ def create_clip_task(
         start_time_s: When this moment starts in the video (seconds)
         duration_s: How long this moment lasts (seconds)
         composer_notes: Your FULL creative vision for this moment
+        asset_url: Cloud URL for the asset (preferred over asset_path)
     
     Returns:
         Task ID
@@ -90,6 +92,7 @@ def create_clip_task(
     task_data = {
         "video_project_id": video_project_id,
         "asset_path": asset_path,
+        "asset_url": asset_url,  # Cloud URL (preferred over asset_path)
         "start_time_s": start_time_s,
         "duration_s": duration_s,
         "composer_notes": composer_notes,
@@ -210,16 +213,13 @@ def generate_enhanced_image(
         aspect_ratio="16:9"
     """
     from db.supabase_client import get_client
-    
-    # Note: In production, this calls the image generation MCP
-    # For now, we create a record and return a placeholder path
+    from tools.image_gen import generate_enhanced_screenshot
+    from tools.storage import is_remote_url
     
     video_project_id = state.get("video_project_id") if state else None
-    
     client = get_client()
     
     # Map aspect_ratio to dimensions (for storage/debugging)
-    # The actual generation API uses aspect_ratio directly
     dimensions_map = {
         "16:9": (1920, 1080),
         "9:16": (1080, 1920),
@@ -231,40 +231,70 @@ def generate_enhanced_image(
     # Store description - defaults to prompt summary if not provided
     stored_description = description or prompt[:100]
     
-    # Create a record for the generated asset
-    # Stores prompt + aspect_ratio for regeneration/debugging
+    # Create a record for the generated asset (status=pending)
     asset_data = {
         "video_project_id": video_project_id,
         "clip_task_id": task_id,
         "source_asset_path": source_asset_path,
         "prompt": prompt,
-        "aspect_ratio": aspect_ratio,  # Store for regeneration
-        "description": f"{stored_description} [{width}×{height}]",  # Bake in dimensions
+        "aspect_ratio": aspect_ratio,
+        "description": f"{stored_description} [{width}×{height}]",
         "status": "pending",
         "generation_model": "gemini-3-pro-image-preview",
     }
     
     result = client.table("generated_assets").insert(asset_data).execute()
     
-    if result.data:
-        asset_id = result.data[0]["id"]
-        
-        # TODO: Actually call image generation MCP here
-        # For now, return a placeholder path
-        # Real implementation would:
-        # 1. Call MCP with prompt + aspect_ratio
-        # 2. Get back the generated image URL/path
-        # 3. Update the DB record with asset_url
-        # 4. Return that path
-        
-        placeholder_path = f"/assets/generated/{asset_id}.png"
-        
-        print(f"   🎨 Generation requested ({aspect_ratio}): {prompt[:50]}...")
-        
-        # Return just the path - model knows what it asked for
-        return f"Generated: {placeholder_path}"
-    else:
+    if not result.data:
         return "ERROR: Failed to create generated asset record"
+    
+    asset_id = result.data[0]["id"]
+    
+    # Resolve source path: if it's a URL, we can't use it as local reference
+    # The image gen API needs a local file
+    local_source = None
+    if source_asset_path and not is_remote_url(source_asset_path):
+        local_source = source_asset_path
+    
+    try:
+        print(f"   🎨 Generating ({aspect_ratio}): {prompt[:50]}...")
+        
+        # Actually generate the image
+        gen_result = generate_enhanced_screenshot(
+            prompt=prompt,
+            source_path=local_source,
+            aspect_ratio=aspect_ratio,
+            project_id=video_project_id,
+        )
+        
+        local_path = gen_result["local_path"]
+        cloud_url = gen_result.get("cloud_url")
+        
+        # Update the DB record with paths
+        update_data = {
+            "asset_path": local_path,
+            "status": "completed",
+        }
+        if cloud_url:
+            update_data["asset_url"] = cloud_url
+        
+        client.table("generated_assets").update(update_data).eq("id", asset_id).execute()
+        
+        # Return the best available path (prefer cloud URL)
+        output_path = cloud_url or local_path
+        print(f"   ✓ Generated: {output_path[-50:]}")
+        
+        return f"Generated: {output_path}"
+        
+    except Exception as e:
+        # Update record with error status
+        client.table("generated_assets").update({
+            "status": "failed",
+            "description": f"{stored_description} [ERROR: {str(e)[:100]}]",
+        }).eq("id", asset_id).execute()
+        
+        print(f"   ❌ Generation failed: {e}")
+        return f"ERROR: Image generation failed - {str(e)}"
 
 
 @tool

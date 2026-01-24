@@ -1,38 +1,68 @@
 """
-Editor Phase Graph
+Editor Phase Graph V2
 
-Orchestrates: planner → clip_composer → assembler → render → music
+FIXES:
+1. Send-based fan-out for parallel clip composition
+2. Style guide flows from planner to all composers
+3. Clean convergence to assembler
 
-Complete flow after layer-based architecture:
-- Planner creates clip_tasks with rich creative notes
-- Composer builds layer specs for each clip
-- Assembler collects everything into VideoSpec
-- Renderer produces video (without audio)
-- Music phase generates aligned BGM based on clip times
-- Final video is muxed with audio via FFmpeg
+Architecture:
+                    
+    planner (generates style_guide)
+       ├─→ compose_clip (clip 1) ──┐
+       ├─→ compose_clip (clip 2) ──┼─→ assemble
+       ├─→ compose_clip (clip 3) ──┤
+       └─→ compose_clip (clip 4) ──┘
+       
+All composers run in PARALLEL with shared style_guide.
 """
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
 from langgraph.checkpoint.memory import InMemorySaver
 
-from .state import EditorState
-from .planner import edit_planner_node
-from .clip_composer import compose_all_clips_node
-from .assembler import edit_assembler_node
+from .core.state import EditorState
+from .planners import edit_planner_node
+from .composers import compose_single_clip_node, compose_all_clips_node
+from .core.assembler import edit_assembler_node
 
 
 # ─────────────────────────────────────────────────────────────
-# Routing
+# Routing with Send (Fan-Out)
 # ─────────────────────────────────────────────────────────────
 
-def route_after_planning(state: EditorState) -> Literal["compose_clips", "assemble"]:
-    """Route after planning based on what tasks were created."""
-    clip_ids = state.get("clip_task_ids", [])
+def route_to_composers(state: EditorState):
+    """
+    Fan out to multiple composer nodes in parallel.
     
-    if clip_ids:
-        return "compose_clips"
-    else:
-        return "assemble"
+    Returns a list of Send objects, one per clip.
+    Each composer gets:
+    - clip_id: The specific clip to compose
+    - video_project_id: For DB access
+    - style_guide: Shared foundation for consistency
+    """
+    clip_ids = state.get("clip_task_ids", [])
+    video_project_id = state["video_project_id"]
+    style_guide = state.get("style_guide", {})
+    
+    if not clip_ids:
+        # No clips to compose, go straight to assembly
+        return END
+    
+    print(f"\n🎨 Composing {len(clip_ids)} clips...")
+    
+    # Create a Send for each clip
+    return [
+        Send(
+            "compose_clip",
+            {
+                "clip_id": clip_id,
+                "video_project_id": video_project_id,
+                "style_guide": style_guide,
+            }
+        )
+        for clip_id in clip_ids
+    ]
 
 
 def should_render(state: EditorState) -> Literal["render", "end"]:
@@ -49,7 +79,6 @@ def should_generate_music(state: EditorState) -> Literal["music", "end"]:
     render_path = state.get("render_path")
     render_error = state.get("render_error")
     
-    # Only generate music if render succeeded
     if render_path and not render_error:
         return "music"
     return "end"
@@ -60,23 +89,20 @@ def should_generate_music(state: EditorState) -> Literal["music", "end"]:
 # ─────────────────────────────────────────────────────────────
 
 def build_editor_graph(
+    use_parallel_composition: bool = False,  # Default to sequential for stability
     include_render: bool = True,
     include_music: bool = True,
 ):
     """
-    Build the editor phase graph.
+    Build the editor phase graph with V2 planner and composer.
     
     Flow:
         planner → compose_clips → assemble [→ render] [→ music]
     
-    Music runs AFTER render (not before), so you get:
-    1. Video rendered without audio
-    2. Music generated based on clip times
-    3. Final muxing of video + audio
-    
     Args:
-        include_render: If True, includes the render step
-        include_music: If True, includes music generation (requires render)
+        use_parallel_composition: Use Send-based fan-out (experimental)
+        include_render: Include render step
+        include_music: Include music generation (requires render)
     """
     builder = StateGraph(EditorState)
     
@@ -84,10 +110,17 @@ def build_editor_graph(
     # Nodes
     # ─────────────────────────────────────────────────────────
     builder.add_node("planner", edit_planner_node)
-    builder.add_node("compose_clips", compose_all_clips_node)
+    
+    if use_parallel_composition:
+        # Single clip composer for parallel execution
+        builder.add_node("compose_clip", compose_single_clip_node)
+    else:
+        # Sequential composition (stable)
+        builder.add_node("compose_clips", compose_all_clips_node)
+    
     builder.add_node("assemble", edit_assembler_node)
     
-    # Render node
+    # Render
     if include_render:
         try:
             from renderer.render_client import remotion_render_node
@@ -95,11 +128,11 @@ def build_editor_graph(
         except ImportError:
             print("⚠️  Render client not available, skipping render node")
             include_render = False
-            include_music = False  # Can't do music without render
+            include_music = False
     
     # Music generation node (runs AFTER render)
     if include_music and include_render:
-        from .music_planner import music_planner_node
+        from .core.music_planner import music_planner_node
         from tools.music_generator import music_generator_node, mux_audio_video_node
         
         builder.add_node("music_plan", music_planner_node)
@@ -111,18 +144,18 @@ def build_editor_graph(
     # ─────────────────────────────────────────────────────────
     builder.add_edge(START, "planner")
     
-    # After planning, route based on what tasks exist
-    builder.add_conditional_edges(
-        "planner",
-        route_after_planning,
-        {
-            "compose_clips": "compose_clips",
-            "assemble": "assemble",
-        }
-    )
-    
-    # After clip composition, go to assembly
-    builder.add_edge("compose_clips", "assemble")
+    if use_parallel_composition:
+        # Fan-out to multiple composers
+        builder.add_conditional_edges(
+            "planner",
+            route_to_composers,  # Returns list of Send or END
+        )
+        # All composers converge to assembler
+        builder.add_edge("compose_clip", "assemble")
+    else:
+        # Sequential composition
+        builder.add_edge("planner", "compose_clips")
+        builder.add_edge("compose_clips", "assemble")
     
     # After assembly
     if include_render:
@@ -146,7 +179,6 @@ def build_editor_graph(
                 }
             )
             
-            # Music flow: plan → generate → mux with video
             builder.add_edge("music_plan", "music_generate")
             builder.add_edge("music_generate", "mux_audio")
             builder.add_edge("mux_audio", END)
@@ -166,6 +198,7 @@ def run_editor_standalone(
     video_project_id: str,
     include_render: bool = True,
     include_music: bool = True,
+    use_parallel: bool = False,
 ) -> EditorState:
     """
     Run editor phase standalone, loading state from database.
@@ -174,14 +207,15 @@ def run_editor_standalone(
         result = run_editor_standalone("project-uuid-here")
         print(result["video_spec"])
     """
-    from .loader import load_editor_state
+    from .core.loader import load_editor_state
     
     print(f"\n{'='*60}")
-    print(f"Editor Phase - Project: {video_project_id}")
+    print(f"Editor Phase V2 - Project: {video_project_id}")
     print(f"{'='*60}")
     
     initial_state = load_editor_state(video_project_id)
     graph = build_editor_graph(
+        use_parallel_composition=use_parallel,
         include_render=include_render,
         include_music=include_music,
     )
@@ -200,10 +234,10 @@ def run_editor_test(
     """
     Run editor phase with test state, no database required.
     """
-    from .loader import create_test_state
+    from .core.loader import create_test_state
     
     print("\n" + "="*60)
-    print("Editor Phase - TEST MODE")
+    print("Editor Phase V2 - TEST MODE")
     print("="*60)
     
     state = test_state or create_test_state()
@@ -225,7 +259,7 @@ def run_editor_with_checkpointer(
     """
     Run editor with custom checkpointer (for persistence).
     """
-    from .loader import load_editor_state
+    from .core.loader import load_editor_state
     
     initial_state = load_editor_state(video_project_id)
     
@@ -245,15 +279,14 @@ def run_editor_with_checkpointer(
             include_music = False
     
     if include_music and include_render:
-        from .music_planner import music_planner_node
+        from .core.music_planner import music_planner_node
         from tools.music_generator import music_generator_node, mux_audio_video_node
         builder.add_node("music_plan", music_planner_node)
         builder.add_node("music_generate", music_generator_node)
         builder.add_node("mux_audio", mux_audio_video_node)
     
     builder.add_edge(START, "planner")
-    builder.add_conditional_edges("planner", route_after_planning, 
-        {"compose_clips": "compose_clips", "assemble": "assemble"})
+    builder.add_edge("planner", "compose_clips")
     builder.add_edge("compose_clips", "assemble")
     
     if include_render:
@@ -283,7 +316,7 @@ def run_editor_with_checkpointer(
 
 def run_composing_only(video_project_id: str) -> EditorState:
     """Run only the clip composition phase (skip planning)."""
-    from .loader import load_editor_state
+    from .core.loader import load_editor_state
     from tools.editor_tools import get_pending_clip_tasks
     
     print(f"\n{'='*60}")
@@ -311,7 +344,7 @@ def run_composing_only(video_project_id: str) -> EditorState:
 
 def run_assembly_only(video_project_id: str) -> EditorState:
     """Run only the assembly phase."""
-    from .loader import load_editor_state
+    from .core.loader import load_editor_state
     
     print(f"\n{'='*60}")
     print(f"Assemble Only - Project: {video_project_id}")
@@ -337,8 +370,8 @@ def run_music_only(video_project_id: str, video_path: str = None) -> EditorState
         video_project_id: Project to generate music for
         video_path: Optional path to rendered video (for muxing)
     """
-    from .loader import load_editor_state
-    from .music_planner import music_planner_node
+    from .core.loader import load_editor_state
+    from .core.music_planner import music_planner_node
     from tools.music_generator import music_generator_node, mux_audio_video_node
     
     print(f"\n{'='*60}")
@@ -377,19 +410,22 @@ def run_music_only(video_project_id: str, video_path: str = None) -> EditorState
 def print_graph_structure():
     """Print the graph structure for debugging."""
     print("""
-    Editor Phase Graph (with Post-Render Music)
+    Editor Phase Graph V2
     ═══════════════════════════════════════════════════════════
     
     START
        │
        ▼
     ┌─────────────────┐
-    │     planner     │  Creates clip_tasks with creative notes
+    │     planner     │  V2: Sequential timeline + cognitive load durations
+    │                 │  - Screenshots: 2-3s (not 0.8s!)
+    │                 │  - Text: 0.4-1.2s based on word count
+    │                 │  - NO overlaps, NO duplicates
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
-    │  compose_clips  │  Builds layer specs for each clip
+    │  compose_clips  │  V2: Style guide enforced consistency
     └────────┬────────┘
              │
              ▼
@@ -405,13 +441,11 @@ def print_graph_structure():
              ▼
     ┌─────────────────┐
     │   music_plan    │  Analyzes clip times → hit points
-    │                 │  (0 LLM calls - pure Python)
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
     │ music_generate  │  ElevenLabs → aligned BGM
-    │                 │  (0-1 LLM calls for refinement)
     └────────┬────────┘
              │
              ▼

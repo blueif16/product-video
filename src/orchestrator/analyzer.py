@@ -17,7 +17,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from config import get_model
 from tools import ANALYZER_TOOLS
-from db.supabase_client import create_task, create_video_project
+from db.supabase_client import create_task, create_video_project, get_supabase
 from .state import PipelineState, AppManifest
 from .session import get_session
 
@@ -46,8 +46,13 @@ def reset_context():
 # Tools
 # ─────────────────────────────────────────────────────────────
 
-def create_tools(app_bundle_id: str, url_schemes: list[str]):
-    """Create tools for the analyzer agent."""
+def create_tools(app_bundle_id: str, url_schemes: list[str], temp_project_id: str):
+    """
+    Create tools for the analyzer agent.
+    
+    Args:
+        temp_project_id: Temporary project ID to link tasks (will be updated to real ID later)
+    """
     
     @tool
     def set_app_manifest(
@@ -118,6 +123,7 @@ def create_tools(app_bundle_id: str, url_schemes: list[str]):
             full_description = f"[Target: {target_screen}]\n\n{description}"
         
         task_id = create_task(
+            video_project_id=temp_project_id,  # Use temp ID, will be updated later
             app_bundle_id=app_bundle_id,
             task_description=full_description,
             capture_type=ctype
@@ -173,7 +179,11 @@ def analyze_and_plan_node(state: PipelineState) -> dict:
     # Get URL schemes from state (extracted by intake)
     url_schemes = state.get("url_schemes", [])
     
-    tools = ANALYZER_TOOLS + create_tools(app_bundle_id, url_schemes)
+    # Generate a temp project ID for task creation
+    import uuid
+    temp_project_id = f"temp-{uuid.uuid4()}"
+    
+    tools = ANALYZER_TOOLS + create_tools(app_bundle_id, url_schemes, temp_project_id)
     
     # Build context about known URL schemes
     url_scheme_info = ""
@@ -240,6 +250,19 @@ Start by exploring the project structure.""",
             app_bundle_id=app_bundle_id,
             analysis_summary=_ctx.analysis_summary
         )
+        
+        # ═══════════════════════════════════════════════════════════════
+        # CRITICAL: Update all tasks with the real video_project_id
+        # ═══════════════════════════════════════════════════════════════
+        if _ctx.task_ids:
+            db = get_supabase()
+            db.table("capture_tasks").update({
+                "video_project_id": video_project_id,
+                "updated_at": "now()"
+            }).eq("video_project_id", temp_project_id).execute()
+            
+            print(f"  ↳ Linked {len(_ctx.task_ids)} tasks to project {video_project_id[:8]}...")
+        
         # Track in session
         session.video_project_id = video_project_id
         

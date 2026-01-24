@@ -13,7 +13,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 from config import get_model, Config
-from tools import CAPTURER_TOOLS, INTERACTION_BACKEND
+from tools import CAPTURER_TOOLS, INTERACTION_BACKEND, reset_exploration_state, get_exploration_state
 from db.supabase_client import get_task, update_task_status
 from .state import PipelineState, AppManifest
 from .session import get_session
@@ -83,8 +83,8 @@ def reset_result():
 # Tools
 # ─────────────────────────────────────────────────────────────
 
-def create_result_tool(task_id: str):
-    """Create result reporting tool bound to task_id."""
+def create_result_tool(task_id: str, video_project_id: str):
+    """Create result reporting tool bound to task_id and project."""
     
     @tool
     def report_capture_result(success: bool, asset_path: str, notes: str) -> str:
@@ -95,6 +95,8 @@ def create_result_tool(task_id: str):
         If validation failed, you must either:
         1. Capture again and get a passing validation
         2. Report success=False with explanation
+        
+        On success, the asset is automatically uploaded to cloud storage.
         
         Args:
             success: True if capture is usable for marketing video
@@ -111,9 +113,8 @@ def create_result_tool(task_id: str):
                 return f"BLOCKED: Cannot report success - {reason}. Either capture again with passing validation, or report failure."
         
         status = "success" if success else "failed"
-        update_task_status(task_id, status, asset_path=asset_path, validation_notes=notes)
-
-        # Auto-trim static frames from video
+        
+        # Auto-trim static frames from video before upload
         if success and asset_path.endswith('.mp4') and Config.AUTO_TRIM_STATIC_FRAMES:
             try:
                 import sys
@@ -138,12 +139,39 @@ def create_result_tool(task_id: str):
                 # Update asset_path if trimmed
                 if trimmed_path != asset_path:
                     asset_path = trimmed_path
-                    # Update DB with new trimmed path
-                    update_task_status(task_id, status, asset_path=asset_path, validation_notes=notes)
+                    log(f"   ✂️  Trimmed to: {trimmed_path.split('/')[-1]}")
 
             except Exception as e:
                 # Trimming failure should not break the pipeline
-                log(f"   ⚠️  视频裁剪失败（保留原视频）: {str(e)}")
+                log(f"   ⚠️  Video trim failed (keeping original): {str(e)}")
+        
+        # Cloud-first: Upload to Supabase Storage on success
+        asset_url = None
+        if success:
+            try:
+                from tools.storage import upload_asset
+                
+                # Determine capture type from file extension
+                capture_type = "recording" if asset_path.endswith('.mp4') else "screenshot"
+                subfolder = "recordings" if capture_type == "recording" else "screenshots"
+                
+                log(f"   ☁️  Uploading to cloud...")
+                asset_url = upload_asset(asset_path, video_project_id, subfolder=subfolder)
+                log(f"   ☁️  Uploaded → {asset_url.split('/')[-1]}")
+                
+            except Exception as e:
+                # Upload failure is logged but doesn't fail the capture
+                # The local asset_path is still valid
+                log(f"   ⚠️  Cloud upload failed (local file saved): {str(e)}")
+        
+        # Update DB with both local path and cloud URL
+        update_task_status(
+            task_id, 
+            status, 
+            asset_path=asset_path, 
+            asset_url=asset_url,
+            validation_notes=notes
+        )
 
         # Track for logging
         _result.success = success
@@ -155,7 +183,7 @@ def create_result_tool(task_id: str):
             session = get_session()
             session.mark_task_complete(task_id)
         
-        return f"Recorded: {status}"
+        return f"Recorded: {status}" + (f" (cloud: {asset_url is not None})" if success else "")
     
     return report_capture_result
 
@@ -289,6 +317,15 @@ def format_tool_call(tool_name: str, tool_args: dict) -> str:
     elif tool_name == "verify_screen":
         screen = tool_args.get("expected_screen", "?")
         return f"verify_screen(\"{screen}\")"
+    
+    elif tool_name == "request_human_guidance":
+        question = tool_args.get("specific_question", "?")
+        if len(question) > 40:
+            question = question[:37] + "..."
+        return f"request_human_guidance(\"{question}\")"
+    
+    elif tool_name == "check_exploration_budget":
+        return "check_exploration_budget()"
     
     else:
         return tool_name
@@ -669,6 +706,40 @@ HANDLING FAILURES (Distinguish failure types!)
   → NEVER skip recon and jump straight to recording
 
 ═══════════════════════════════════════════════════════════════
+EXPLORATION LIMITS & ASKING FOR HELP
+═══════════════════════════════════════════════════════════════
+
+You have a LIMITED EXPLORATION BUDGET:
+  • Max {Config.MAX_DESCRIBE_CALLS} describe_screen() calls
+  • Max {Config.MAX_NAVIGATION_ATTEMPTS} navigation attempts (tap, swipe, open_url)
+
+If you're exploring and can't find the target screen:
+  1. First, try the obvious paths (deep links, tabs, menu items)
+  2. If those fail, use check_exploration_budget() to see remaining attempts
+  3. If budget is LOW (≤3 describes or ≤5 nav attempts left), ASK FOR HELP
+
+WHEN TO ASK FOR HELP (use request_human_guidance tool):
+  • You've tried 3+ different navigation paths and none work
+  • The deep link doesn't work and you don't know the UI path
+  • You're going in circles (same screens appearing repeatedly)
+  • You're below 3 describe calls or 5 nav attempts remaining
+
+HOW TO ASK FOR HELP:
+  request_human_guidance(
+    situation="I'm on the main dashboard, see tabs for Home/Chat/Profile",
+    what_i_tried="Tried yiban://inventory, tapped all tabs, searched menus",
+    specific_question="How do I reach the Inventory/Closet screen?"
+  )
+
+The human can provide:
+  • Specific coordinates: "tap 200 400"
+  • A working deep link: "open yiban://closet"
+  • Step-by-step instructions
+  • "skip" if the screen doesn't exist
+
+DO NOT loop forever trying random taps! Ask for help early.
+
+═══════════════════════════════════════════════════════════════
 CRITICAL RULES
 ═══════════════════════════════════════════════════════════════
 1. ALWAYS describe_screen() after navigation, BEFORE any taps
@@ -678,6 +749,7 @@ CRITICAL RULES
 5. YOU MUST call report_capture_result when done
 6. Max {Config.MAX_CAPTURE_ATTEMPTS} attempts - use recon to succeed first try!
 7. On retry: FULL reset + recon (see HANDLING FAILURES above)
+8. If exploration budget is LOW → request_human_guidance() instead of looping!
 """
 
 
@@ -723,6 +795,10 @@ def capture_single_task_node(state: PipelineState) -> dict:
     
     # Print task header
     print_task_header(current_idx, total, task)
+    
+    # Reset exploration state for this task
+    target_desc = task['task_description'][:100] if task['task_description'] else "Unknown target"
+    reset_exploration_state(target_description=target_desc)
     
     # Get app manifest from state
     manifest = state.get("app_manifest")
@@ -819,6 +895,9 @@ Start with set_status_bar, then launch_app (or use deep link), navigate, capture
                                     if tool_name == "validate_capture":
                                         pending_validation_path = tool_args.get("asset_path", "")
                                     
+                                    # Note: Navigation tools (tap, swipe, open_url) now track their own
+                                    # exploration budget internally - see _check_navigation_budget()
+                                    
                                     print_tool_call(tool_name, tool_args)
                         else:
                             content = msg.content if msg.content else ""
@@ -828,6 +907,9 @@ Start with set_status_bar, then launch_app (or use deep link), navigate, capture
                     if isinstance(msg, ToolMessage):
                         content = msg.content if isinstance(msg.content, str) else str(msg.content)
                         debug(f"    Tool result from '{msg.name}': {content[:50]}...")
+                        
+                        # Note: describe_screen now tracks its own exploration budget
+                        # internally - see the describe_screen tool implementation
                         
                         if msg.name == "validate_capture":
                             is_failure = "FAILED" in content.upper()

@@ -5,6 +5,11 @@ API Key Usage:
 - This module uses the SECRET key (sb_secret_...) by default
 - The secret key bypasses RLS for full database access
 - For RLS-respecting operations, pass elevated=False to get_supabase()
+
+Cloud-First Architecture:
+- Captures are uploaded to Supabase Storage immediately after validation
+- asset_url (cloud) is the primary reference for downstream processing
+- asset_path (local) is kept for fallback/debugging
 """
 from supabase import create_client, Client
 from config import Config
@@ -88,13 +93,26 @@ def delete_video_project(project_id: str) -> bool:
 # ─────────────────────────────────────────────────────────────
 
 def create_task(
+    video_project_id: str,
     app_bundle_id: str,
     task_description: str,
     capture_type: str
 ) -> str:
-    """Create a capture task. Returns task ID."""
+    """
+    Create a capture task linked to a video project.
+    
+    Args:
+        video_project_id: The video project this task belongs to
+        app_bundle_id: App bundle ID (kept for legacy queries)
+        task_description: What to capture
+        capture_type: 'screenshot' or 'recording'
+    
+    Returns:
+        Task ID
+    """
     db = get_supabase()
     result = db.table("capture_tasks").insert({
+        "video_project_id": video_project_id,
         "app_bundle_id": app_bundle_id,
         "task_description": task_description,
         "capture_type": capture_type,
@@ -114,16 +132,40 @@ def update_task_status(
     task_id: str, 
     status: str, 
     asset_path: Optional[str] = None,
+    asset_url: Optional[str] = None,
     validation_notes: Optional[str] = None
 ) -> None:
-    """Update task status: 'pending', 'success', 'failed'"""
+    """
+    Update task status and optionally asset paths.
+    
+    Args:
+        task_id: Task UUID
+        status: 'pending', 'success', 'failed'
+        asset_path: Local file path (for fallback/debugging)
+        asset_url: Cloud storage URL (primary reference)
+        validation_notes: Notes from validation
+    """
     db = get_supabase()
     update_data = {"status": status, "updated_at": "now()"}
     if asset_path:
         update_data["asset_path"] = asset_path
+    if asset_url:
+        update_data["asset_url"] = asset_url
     if validation_notes:
         update_data["validation_notes"] = validation_notes
     db.table("capture_tasks").update(update_data).eq("id", task_id).execute()
+
+
+def update_task_asset_url(task_id: str, asset_url: str) -> None:
+    """
+    Update just the asset_url for a task.
+    Called after successful cloud upload.
+    """
+    db = get_supabase()
+    db.table("capture_tasks").update({
+        "asset_url": asset_url,
+        "updated_at": "now()"
+    }).eq("id", task_id).execute()
 
 
 def increment_attempt(task_id: str) -> int:
@@ -162,6 +204,25 @@ def get_all_tasks(app_bundle_id: str) -> list[dict]:
     result = db.table("capture_tasks").select("*").eq(
         "app_bundle_id", app_bundle_id
     ).execute()
+    return result.data
+
+
+def get_project_tasks(video_project_id: str, status: Optional[str] = None) -> list[dict]:
+    """
+    Get all tasks for a video project.
+    
+    Args:
+        video_project_id: Project UUID
+        status: Optional filter ('pending', 'success', 'failed')
+    
+    Returns:
+        List of task dicts with asset_path and asset_url
+    """
+    db = get_supabase()
+    query = db.table("capture_tasks").select("*").eq("video_project_id", video_project_id)
+    if status:
+        query = query.eq("status", status)
+    result = query.execute()
     return result.data
 
 
