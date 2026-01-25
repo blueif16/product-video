@@ -342,6 +342,8 @@ def submit_clip_spec(
                 "type": "image",
                 "src": "path/to/asset.png",  // Captured OR generated path
                 "zIndex": 1,
+                "position": {"x": 50, "y": 45},  // Percentage coords (optional, defaults to center)
+                "scale": 0.7,  // 0.3-1.0 size multiplier (optional, defaults to fit canvas)
                 "transform": {
                     "type": "zoom_in",  // static, ken_burns, zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down, focus
                     "startScale": 1.0,
@@ -351,7 +353,7 @@ def submit_clip_spec(
                     "intensity": 1.0  // 0.5=subtle, 1.0=normal, 1.5=dramatic
                 },
                 "opacity": {"start": 1, "end": 1},  // Animate opacity over clip duration
-                "device": "iphone"  // none, iphone, iphonePro, macbook, ipad
+                "device": "iphone"  // none, iphone, iphonePro, macbook, ipad (optional)
             }
             
             ═══════════════════════════════════════════════════════════
