@@ -387,53 +387,92 @@ def music_generator_node(state: dict) -> dict:
 def mux_audio_video_node(state: dict) -> dict:
     """
     LangGraph node: Combine rendered video with generated audio.
-    
+
     Uses FFmpeg to mux:
     - video from render_path (video without audio)
     - audio from audio_path (generated BGM)
-    
+
     Output: final_video_path (video with audio)
     """
     print("\n🎬 Muxing audio with video...")
-    
+
     render_path = state.get("render_path")
     audio_path = state.get("audio_path")
-    
+    video_project_id = state.get("video_project_id")
+
     if not render_path:
         print("   ⚠️  No render_path found, skipping mux")
         return {}
-    
+
     if not audio_path:
         print("   ⚠️  No audio_path found, skipping mux")
         return {"final_video_path": render_path}
-    
-    if not os.path.exists(render_path):
-        print(f"   ⚠️  Video file not found: {render_path}")
+
+    # Check if render_path is a URL (cloud storage)
+    is_url = render_path.startswith(("http://", "https://"))
+    local_video_path = render_path
+    temp_video_file = None
+
+    if is_url:
+        print(f"   📥 Downloading video from cloud: {render_path}")
+        try:
+            import requests
+            import tempfile
+
+            # Download video to temp file
+            response = requests.get(render_path, timeout=300)
+            response.raise_for_status()
+
+            # Create temp file with same extension
+            suffix = Path(render_path).suffix or ".mp4"
+            temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            temp_video_file.write(response.content)
+            temp_video_file.close()
+            local_video_path = temp_video_file.name
+            print(f"   ✓ Downloaded to: {local_video_path}")
+        except Exception as e:
+            print(f"   ❌ Failed to download video: {e}")
+            return {"final_video_path": render_path}
+
+    if not os.path.exists(local_video_path):
+        print(f"   ⚠️  Video file not found: {local_video_path}")
+        if temp_video_file:
+            try:
+                os.unlink(temp_video_file.name)
+            except:
+                pass
         return {}
-    
+
     if not os.path.exists(audio_path):
         print(f"   ⚠️  Audio file not found: {audio_path}")
+        if temp_video_file:
+            try:
+                os.unlink(temp_video_file.name)
+            except:
+                pass
         return {"final_video_path": render_path}
     
     # Output path: video_with_audio.mp4
-    video_path = Path(render_path)
-    output_path = video_path.parent / f"{video_path.stem}_with_audio{video_path.suffix}"
-    
+    import tempfile
+    temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    temp_output.close()
+    output_path = temp_output.name
+
     # FFmpeg command: add audio to video
     # -shortest: end when shortest stream ends (in case audio is slightly longer)
     cmd = [
         "ffmpeg", "-y",
-        "-i", str(render_path),      # Video input
-        "-i", str(audio_path),       # Audio input
-        "-map", "0:v:0",             # Use video stream from input 0
-        "-map", "1:a:0",             # Use audio stream from input 1
-        "-c:v", "copy",              # Copy video stream (no re-encode)
-        "-c:a", "aac",               # Encode audio as AAC
-        "-b:a", "192k",              # Audio bitrate
-        "-shortest",                 # End when shortest stream ends
+        "-i", str(local_video_path),  # Video input (local file)
+        "-i", str(audio_path),        # Audio input
+        "-map", "0:v:0",              # Use video stream from input 0
+        "-map", "1:a:0",              # Use audio stream from input 1
+        "-c:v", "copy",               # Copy video stream (no re-encode)
+        "-c:a", "aac",                # Encode audio as AAC
+        "-b:a", "192k",               # Audio bitrate
+        "-shortest",                  # End when shortest stream ends
         str(output_path)
     ]
-    
+
     try:
         print(f"   📀 Running FFmpeg...")
         result = subprocess.run(
@@ -442,22 +481,82 @@ def mux_audio_video_node(state: dict) -> dict:
             text=True,
             timeout=120,
         )
-        
-        if result.returncode == 0:
-            print(f"   ✓ Final video: {output_path}")
-            return {
-                "final_video_path": str(output_path),
-            }
-        else:
+
+        # Clean up temp video file if downloaded
+        if temp_video_file:
+            try:
+                os.unlink(temp_video_file.name)
+            except:
+                pass
+
+        if result.returncode != 0:
             print(f"   ❌ FFmpeg error: {result.stderr[:500]}")
-            # Return original video path as fallback
+            try:
+                os.unlink(output_path)
+            except:
+                pass
             return {
                 "final_video_path": render_path,
                 "mux_error": result.stderr,
             }
-            
+
+        print(f"   ✓ Muxed video created: {output_path}")
+
+        # Upload to cloud if we have video_project_id
+        final_path = output_path
+        if video_project_id and is_url:
+            try:
+                from db.supabase_client import get_supabase
+                print(f"   📤 Uploading final video to cloud...")
+
+                supabase = get_supabase()
+                with open(output_path, "rb") as f:
+                    video_data = f.read()
+
+                # Upload to same location as original video
+                storage_path = f"{video_project_id}/renders/{video_project_id}_final.mp4"
+                supabase.storage.from_("captures").upload(
+                    storage_path,
+                    video_data,
+                    file_options={"content-type": "video/mp4", "upsert": "true"}
+                )
+
+                # Get public URL
+                final_url = supabase.storage.from_("captures").get_public_url(storage_path)
+                print(f"   ✓ Final video uploaded: {final_url}")
+                final_path = final_url
+
+                # Update database
+                supabase.table("video_projects").update({
+                    "final_video_path": final_url,
+                }).eq("id", video_project_id).execute()
+
+            except Exception as e:
+                print(f"   ⚠️  Cloud upload failed: {e}, using local path")
+                final_path = output_path
+
+        # Clean up temp output if uploaded
+        if final_path != output_path:
+            try:
+                os.unlink(output_path)
+            except:
+                pass
+
+        return {
+            "final_video_path": final_path,
+        }
+
     except subprocess.TimeoutExpired:
         print("   ❌ FFmpeg timed out")
+        if temp_video_file:
+            try:
+                os.unlink(temp_video_file.name)
+            except:
+                pass
+        try:
+            os.unlink(output_path)
+        except:
+            pass
         return {
             "final_video_path": render_path,
             "mux_error": "FFmpeg timed out",

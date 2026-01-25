@@ -30,6 +30,129 @@ Architecture: FastAPI + LangGraph (backend) ↔ AG-UI Protocol ↔ Next.js + Cop
 
 ---
 
+## 🔧 Upload Mode & State Management Fixes
+
+**FIX 1: Frontend State Race Condition**
+
+**Problem**: Frontend `setState` calls were overwriting backend SSE state updates, causing UI to freeze at "preparing" stage.
+
+**Solution**: Remove all frontend `setState` calls in upload flow. Let backend completely control state via SSE.
+
+```tsx
+// ❌ WRONG - Don't do this in handleUploadStart:
+setState({
+  ...state,
+  video_project_id: project_id,
+  current_stage: "preparing",  // This overwrites backend updates!
+  progress_percent: 10,
+});
+
+// ✅ CORRECT - Only use setState to pass project_id, let backend control progress:
+setState({
+  ...state,
+  video_project_id: project_id,
+  pipeline_mode: "upload",
+});
+```
+
+**FIX 2: Agent Triggering Method**
+
+**Problem**: Using `run()` from `useCoAgent` caused `TypeError: Cannot set properties of undefined (setting 'abortController')`. The `run()` method is for re-running an already active agent, not for initial execution.
+
+**Solution**: Use `useCopilotChat` hook's `appendMessage` to trigger agent execution.
+
+```tsx
+// ❌ WRONG - run() is for re-running active agents:
+const { state, run } = useCoAgent({ name: "pipelineAgent", initialState });
+await run(() => new TextMessage({ role: MessageRole.User, content: "..." }));
+
+// ✅ CORRECT - Use appendMessage for initial trigger:
+const { state, setState } = useCoAgent({ name: "pipelineAgent", initialState });
+const { appendMessage } = useCopilotChat();
+
+await appendMessage(
+  new TextMessage({
+    role: MessageRole.User,
+    content: `Start editing: ${userInput}. Project ID: ${project_id}`,
+  })
+);
+```
+
+**FIX 3: Database Schema - final_video_path Column**
+
+**Problem**: `render_client.py` tried to update `video_projects.final_video_path` but column didn't exist, causing `PGRST204` error.
+
+**Solution**: Add migration to create the column.
+
+**File: `src/db/migrations/007_add_final_video_path.sql`**
+
+```sql
+-- Add final_video_path column to video_projects table
+-- This stores the cloud URL of the final rendered video
+
+ALTER TABLE video_projects
+ADD COLUMN IF NOT EXISTS final_video_path text;
+
+COMMENT ON COLUMN video_projects.final_video_path IS 'Cloud storage URL of the final rendered video';
+```
+
+**FIX 4: Video Upload to Cloud Storage**
+
+**Problem**: Rendered videos were stored locally and returned as local file paths, which frontend couldn't access.
+
+**Solution**: Upload rendered video to Supabase Storage after rendering completes.
+
+**File: `src/renderer/render_client.py`** (add after line 258):
+
+```python
+# Add import at top
+from tools.storage import upload_asset
+
+# In remotion_render_node, after successful render:
+if success:
+    print(f"\n✓ Render complete: {output_path}")
+
+    # Upload video to cloud storage
+    try:
+        print(f"📤 Uploading video to cloud storage...")
+        video_url = upload_asset(
+            local_path=output_path,
+            project_id=video_project_id,
+            bucket="captures",  # Use same bucket as other assets
+            subfolder="renders"  # Store in renders subfolder
+        )
+        print(f"✅ Video uploaded: {video_url}")
+    except Exception as e:
+        print(f"⚠️ Cloud upload failed: {e}")
+        video_url = output_path  # Fallback to local path
+
+    # Update DB with cloud URL
+    if video_spec_id:
+        client.table("video_specs").update({
+            "render_status": "complete",
+            "render_path": video_url,  # Use cloud URL
+            "render_completed_at": "now()",
+        }).eq("id", video_spec_id).execute()
+
+    client.table("video_projects").update({
+        "editor_status": "rendered",
+        "final_video_path": video_url,  # Store cloud URL in project
+    }).eq("id", video_project_id).execute()
+
+    return {
+        "render_status": "complete",
+        "render_path": video_url,  # Return cloud URL
+        "final_video_path": video_url,
+    }
+```
+
+**Result**: Videos are now accessible via public Supabase Storage URLs like:
+```
+https://xxx.supabase.co/storage/v1/object/public/captures/{project_id}/renders/video.mp4
+```
+
+---
+
 ## Table of Contents
 
 - [Phase 0: Prerequisites](#phase-0-prerequisites)

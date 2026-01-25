@@ -138,6 +138,8 @@ const imageLayerSchema = z.object({
   type: z.literal("image"),
   src: z.string(),
   zIndex: z.number(),
+  position: positionSchema.optional(),
+  scale: z.number().optional(),
   transform: transformSchema.optional(),
   opacity: opacitySchema.optional(),
   device: z.enum(["none", "iphone", "iphonePro", "macbook", "ipad"]).optional(),
@@ -371,6 +373,23 @@ const ImageLayerRenderer: React.FC<{
     });
   }
 
+  // Position and scale handling
+  const layerScale = 'scale' in layer ? layer.scale : 1.0;
+  const layerPosition = 'position' in layer ? layer.position : undefined;
+
+  // Calculate position styles
+  const positionStyles: React.CSSProperties = {};
+  if (layerPosition?.x !== undefined && layerPosition?.y !== undefined) {
+    positionStyles.position = 'absolute';
+    positionStyles.left = `${layerPosition.x}%`;
+    positionStyles.top = `${layerPosition.y}%`;
+    positionStyles.transform = `translate(-50%, -50%) scale(${layerScale})`;
+  } else {
+    // Default: centered
+    positionStyles.width = '100%';
+    positionStyles.height = '100%';
+  }
+
   // Device frame handling
   const device = "device" in layer ? layer.device : undefined;
   if (device && device !== "none") {
@@ -385,12 +404,14 @@ const ImageLayerRenderer: React.FC<{
           opacity,
         }}
       >
-        <DeviceFrame
-          screenshot={cleanScreenshotPath}
-          device={device}
-          scale={device === "macbook" ? 0.6 : device === "ipad" ? 0.55 : 0.8}
-          animated={false}
-        />
+        <div style={positionStyles}>
+          <DeviceFrame
+            screenshot={cleanScreenshotPath}
+            device={device}
+            scale={device === "macbook" ? 0.6 : device === "ipad" ? 0.55 : 0.8}
+            animated={false}
+          />
+        </div>
       </AbsoluteFill>
     );
   }
@@ -448,14 +469,16 @@ const ImageLayerRenderer: React.FC<{
   // Static image
   return (
     <AbsoluteFill style={{ zIndex: layer.zIndex, opacity }}>
-      <Img
-        src={layer.src}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-        }}
-      />
+      <div style={positionStyles}>
+        <Img
+          src={layer.src}
+          style={{
+            width: positionStyles.width || "auto",
+            height: positionStyles.height || "auto",
+            objectFit: "cover",
+          }}
+        />
+      </div>
     </AbsoluteFill>
   );
 };
