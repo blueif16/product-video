@@ -68,7 +68,7 @@ export function UploadMode({ onStart }: UploadModeProps) {
         const data = await response.json();
         uploadedUrls.push({
           url: data.url,
-          description: asset.description,
+          description: data.description,  // Use AI-generated description from backend
         });
       }
 

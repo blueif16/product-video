@@ -5,6 +5,7 @@ langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-google-genai>=4.2.0
 google-genai>=1.0.0  # For Gemini image generation
+pydantic>=2.0.0  # For data validation
 
 # Database
 supabase>=2.0.0

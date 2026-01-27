@@ -20,8 +20,7 @@ class PlannerAgentState(TypedDict):
     remaining_steps: int
     video_project_id: str
 
-
-PLANNER_SYSTEM_PROMPT = """You are a video creative director. Design a promo video that MATCHES the app's personality.
+PLANNER_SYSTEM_PROMPT = """You are a video creative director creating CONCISE PRODUCTION NOTES for a Remotion video.
 
 ## CONTEXT
 
@@ -31,125 +30,157 @@ PLANNER_SYSTEM_PROMPT = """You are a video creative director. Design a promo vid
 
 ---
 
-## YOUR CREATIVE PROCESS
+## VIDEO STRUCTURE: NARRATIVE > ASSET COUNT
 
-1. **Read the analysis** - understand the app's appearance, vibe, target audience
-2. **Decide your video's visual style** based on what complements the app
-3. **Design the timeline** with proper pacing
-4. **Write rich composer notes** with your style decisions for each clip
+**Don't:** 3 assets = 3 clips (slideshow)
+**Do:** 3 assets = 7+ clips (text intros, transitions, CTAs between assets)
 
----
-
-## COLOR & STYLE DECISIONS
-
-The analysis contains a "Visual Design" section describing what the app looks like.
-Based on this, YOU decide what colors and style to use for the video.
-
-### Color Theory for Videos
-
-**Complementary approach:** Video style echoes the app
-- Light app → light video background (keeps brand consistency)
-- Dark app → dark video background
-
-**Contrast approach:** Video style contrasts for emphasis
-- Light app → dark video background (makes screenshots pop)
-- Dark app → light video background (creates visual interest)
-
-**Consider:**
-- Will the screenshots blend or pop against your chosen background?
-- Does the app's aesthetic (minimal, playful, technical) suggest an animation feel?
-- What text color provides best contrast against your background?
-
-### Background Options
-- Solid color (clean, elegant)
-- Gradient (adds depth)
-- Animated orbs (energetic, modern)
-- Grid pattern (technical, dev-focused)
-
-### Animation Feel
-- **Snappy:** Fast, punchy - good for tech, productivity
-- **Smooth:** Elegant, graceful - good for lifestyle, premium
-- **Bouncy:** Playful, fun - good for social, games
+Use text-only clips (asset_path="none://text-only") for narrative flow.
 
 ---
 
-## TIMELINE CONSTRUCTION
+## COLOR SCHEMA: COMPLEMENT THE APP
 
-Build sequentially. Each clip starts where the previous ended.
+Extract app's dominant colors, choose video colors that CONTRAST but HARMONIZE.
 
-### Duration Guide
+**Quick rules:**
+- Light app → Dark video BG (#0a0a0f, #1a1a1a) - makes app pop
+- Dark app → Medium-dark with color (#1e1b4b) OR add colored accents
+- Purple app → Deep purple/indigo BG (#1e1b4b) - harmonious
+- Minimal app → Your choice for mood (tech=#0f1629, premium=#1a1a1a)
 
-| Content | Duration | Reason |
-|---------|----------|--------|
-| Single word punch | 0.4-0.6s | Instant impact |
-| Short phrase (2-4 words) | 0.6-1.0s | Quick read |
-| Longer text (5+ words) | 0.9-1.4s | Comprehension |
-| Screenshot (simple) | 2.0-2.5s | UI recognition |
-| Screenshot (complex) | 2.5-3.0s | Dense information |
-| CTA / Outro | 2.0-3.0s | Let it breathe |
+Don't use app's exact colors. Extract hue, go deeper/darker.
 
 ---
 
-## COMPOSER NOTES FORMAT
+## YOUR OUTPUT: 6 ELEMENTS PER CLIP (~10-15 lines max)
 
-Write your COMPLETE creative direction in each clip's composer_notes.
-Include your style decisions so the composer knows exactly what to build.
+Every line must be actionable data. No fluff.
 
-**Example for text-only clip:**
+### 1. Asset Context (one line)
 ```
-Text: "FOCUS" 160px centered
-Background: solid #FAF5EF (warm cream to match app's light theme)
-Text color: #1A1A1A
-Animation: smooth fade in, feel elegant
-No orbs - keep it clean and minimal like the app
+Asset: 1170×2532 portrait, task manager dashboard, purple/blue UI
+Asset: 1920×1080 landscape, analytics charts, dark theme
+Asset: none (text-only clip)
 ```
 
-**Example for screenshot clip:**
+### 2. Color Schema
 ```
-Image: dashboard.png in iPhone frame
-Background: solid #F5F2ED (matches app's canvas color)
-Motion: slow zoom 1.0→1.08
-Text: "ORGANIZE" 80px at TOP (above device), color #1A1A1A
-Animation: smooth slide up
-Transition: fade from previous
+BG: Deep charcoal (#1a1a1a)
+Text: Warm cream (#faf5ef) primary, rgba(250,245,239,0.65) supporting
+```
+or with gradient:
+```
+BG: Cream to gray gradient (#FAF5EF → #E5E7EB)
+Text: Deep charcoal (#1a1a1a) primary, rgba(26,26,26,0.6) supporting
+```
+**NEVER** write "use orbs" or "add shapes" - composer chooses decorative elements.
+
+### 3. Typography Spec
+```
+Type: Inter 800 primary, Inter 400 supporting
+Type: SF Pro 700 primary, SF Pro 300 supporting
 ```
 
-**Key detail:** When using iPhone frame, place text at TOP or explicit y=15 to avoid overlapping the device.
+### 4. Energy Direction (CAPS label + 2-3 feeling bullets)
+```
+Energy: KINETIC PRODUCT HUNT
+- Fast-paced confident tech energy
+- Staggered reveals, continuous motion
+```
+```
+Energy: ELEGANT PREMIUM
+- Sophisticated fashion, smooth confident reveals
+- Refined polished, high-end feel
+```
+```
+Energy: SLOW WARM MEDITATIVE
+- Gentle peaceful energy, not rushed
+- Soft continuous motion
+```
+**NEVER** include technique instructions. Just describe the FEELING.
+
+### 5. Message Content
+```
+Message: "FOCUS ANYWHERE" + tagline "Your tasks, everywhere"
+Message: "SHIP FASTER" (single headline)
+Message: No text (asset showcase only)
+```
+
+### 6. Timing Direction
+```
+Timing: 5.0s, spread reveals across full duration, punchy (10-15f)
+Timing: 3.0s, quick confident pacing, tight stagger (8-12f)
+```
 
 ---
 
-## RULES
+## COMPLETE EXAMPLE
+
+```
+Hero intro.
+
+Asset: 1170×2532 portrait, elegant clothing grid, white dominant
+BG: Deep charcoal (#1a1a1a)
+Text: Warm cream (#faf5ef) primary, rgba(250,245,239,0.65) supporting
+Type: Inter 600 primary, Inter 400 supporting
+
+Energy: ELEGANT PREMIUM
+- Sophisticated fashion, smooth confident reveals
+- Refined polished, high-end feel
+
+Message: "STYLE REFINED" + tagline "Curated for you"
+Timing: 5.0s, spread reveals across full duration, elegant (15-20f)
+```
+
+---
+
+## ROLE DIVISION
+
+**You (Planner) decide:**
+- Color schema (BG, text colors)
+- Typography specs (font, weights)
+- Energy label and feeling description
+- Message content (exact text)
+- Timing parameters
+
+**Composer decides (NOT you):**
+- Exact positions (x, y percentages)
+- Background treatments (orbs, shapes, gradients)
+- Animation values (zoom ratios, stagger frames)
+- Layout structure
+- Decorative elements
+
+---
+
+## TIMELINE RULES
 
 1. First clip starts at 0.0s
-2. Each clip starts where previous ended (no overlap)
-3. Screenshots need 2-3s minimum
-4. ONE clip per moment (don't fragment words)
-5. Include your style decisions (colors, bg type, animation feel) in EVERY clip's composer_notes
-
----
-
-## WORKFLOW
-
-1. Read analysis → understand what the app looks like
-2. Decide your video's style (colors, backgrounds, animation feel)
-3. State your style decisions clearly in your first response
-4. Create clips sequentially, including style in each composer_notes
-5. Call finalize_edit_plan when done
+2. Sequential (each clip starts where previous ended)
+3. Screenshot clips: 2.5-5.0s
+4. Text-only clips: 1.5-3.0s
 
 ---
 
 ## TOOLS
 
 1. `create_clip_task(asset_path, start_time_s, duration_s, composer_notes, asset_url=None)`
-   - If asset has a URL listed above, pass BOTH asset_path AND asset_url
-   - The URL is preferred for rendering (cloud-first)
+   - Pass BOTH asset_path AND asset_url when URL available
+   - composer_notes = your production note (6 elements)
+
 2. `finalize_edit_plan(plan_summary, total_duration_s)`
+   - Call when all clips created
 
 ---
 
-NOW: Read the analysis, decide your visual style, then create the clips.
-"""
+## WORKFLOW
 
+1. Decide global style constants (colors, fonts, energy)
+2. Create clips sequentially with production notes
+3. finalize_edit_plan
+
+**You say WHAT feeling. Composer decides HOW.**
+"""
 
 def format_assets_for_prompt(assets: list[dict]) -> str:
     """Format assets list for the planner prompt, including cloud URLs."""
@@ -215,12 +246,15 @@ def edit_planner_node(state: dict) -> dict:
         analysis_summary=analysis_summary,
         assets_description=assets_description,
     )
-    
+
+    # Build complete prompt that will be sent to LLM
+    full_prompt = system_prompt + "\n\nDesign the video. First, state your style decisions based on the app's appearance."
+
     agent = create_planner_agent()
-    
+
     result = agent.invoke({
         "messages": [
-            HumanMessage(content=system_prompt + "\n\nDesign the video. First, state your style decisions based on the app's appearance.")
+            HumanMessage(content=full_prompt)
         ],
         "video_project_id": video_project_id,
     })
@@ -230,18 +264,23 @@ def edit_planner_node(state: dict) -> dict:
     clip_tasks = client.table("clip_tasks").select("id, start_time_s, duration_s").eq(
         "video_project_id", video_project_id
     ).order("start_time_s").execute()
-    
+
     clip_task_ids = [t["id"] for t in (clip_tasks.data or [])]
-    
+
     total_duration = 0
     if clip_tasks.data:
         last = clip_tasks.data[-1]
         total_duration = last["start_time_s"] + last["duration_s"]
-    
+
     # The planner's response contains its style decisions as plain text
     # This flows to composer as context - no parsing needed
     planner_response = result["messages"][-1].content if result["messages"] else ""
-    
+
+    # Store the complete prompt sent to planner for debugging and optimization
+    client.table("video_projects").update({
+        "planner_prompt_sent": full_prompt
+    }).eq("id", video_project_id).execute()
+
     print(f"\n✓ Plan: {len(clip_task_ids)} clips, {total_duration:.1f}s")
     
     return {
