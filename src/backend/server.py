@@ -162,34 +162,144 @@ async def upload_file(
     description: str = Form(""),
 ):
     """
-    Upload a single file to Supabase Storage.
-    
+    Upload a single file to Supabase Storage with AI-powered image analysis.
+
     Used by upload-only mode to prepare assets before pipeline.
+    Analyzes the image content using Gemini Vision to extract detailed descriptions.
+    User's description is passed as context to guide the AI analysis.
     """
     from tools.storage import upload_asset
-    
+    from tools.image_analyzer import analyze_image
+
     # Save to temp file
     suffix = os.path.splitext(file.filename or ".png")[1]
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
-    
+
     try:
+        # Analyze image with Gemini Vision, passing user's description as context
+        print(f"🔍 Analyzing image: {file.filename}")
+        if description:
+            print(f"   📝 User note: {description}")
+        
+        analysis = analyze_image(tmp_path, user_note=description)
+
+        # Use AI-generated description if available, fallback to user description or filename
+        final_description = analysis.get("description")
+        if not final_description or "error" in analysis:
+            # Fallback to user-provided description or filename
+            fallback = description or file.filename or "Uploaded image"
+            final_description = f"Image file (portrait): {fallback}"
+            print(f"⚠️  Analysis failed, using fallback: {final_description}")
+        else:
+            print(f"✓ Analysis complete: {final_description[:100]}...")
+
         # Upload to Supabase with a temp project ID
         url = upload_asset(
             tmp_path,
             project_id="uploads",
             subfolder="pending",
         )
-        
+
         return {
             "url": url,
             "filename": file.filename,
-            "description": description,
+            "description": final_description,
+            "width": analysis.get("width", 0),
+            "height": analysis.get("height", 0),
         }
     finally:
         os.unlink(tmp_path)
+
+
+class BatchUploadRequest(BaseModel):
+    """Request for batch upload with analysis."""
+    files_data: list[dict]  # [{filename, data_url, description}]
+
+
+@app.post("/upload-batch")
+async def upload_batch(
+    files: list[UploadFile] = File(...),
+    descriptions: str = Form(""),  # JSON string of descriptions
+):
+    """
+    Upload multiple files and analyze them in a single batch.
+    
+    Uses Gemini batch analysis to understand relationships between images.
+    Faster than individual uploads when you have all files at once.
+    
+    Args:
+        files: List of image files
+        descriptions: JSON string of user notes, e.g. '["Dashboard", "Settings", ""]'
+    """
+    import json
+    from tools.storage import upload_asset
+    from tools.image_analyzer import analyze_image_batch
+    
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # Parse user notes
+    try:
+        user_notes = json.loads(descriptions) if descriptions else []
+    except json.JSONDecodeError:
+        user_notes = []
+    
+    # Ensure notes match files count
+    if len(user_notes) != len(files):
+        user_notes = user_notes + [""] * (len(files) - len(user_notes))
+    
+    # Save all files to temp
+    temp_paths = []
+    filenames = []
+    
+    try:
+        for file in files:
+            suffix = os.path.splitext(file.filename or ".png")[1]
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            content = await file.read()
+            tmp.write(content)
+            tmp.close()
+            temp_paths.append(tmp.name)
+            filenames.append(file.filename)
+        
+        # Batch analyze with user notes
+        print(f"🔍 Batch analyzing {len(temp_paths)} images...")
+        analyses = analyze_image_batch(temp_paths, user_notes=user_notes)
+        
+        # Upload all files
+        results = []
+        for analysis, filename, temp_path in zip(analyses, filenames, temp_paths):
+            url = upload_asset(
+                temp_path,
+                project_id="uploads",
+                subfolder="pending",
+            )
+            
+            results.append({
+                "url": url,
+                "filename": filename,
+                "description": analysis.get("description", f"Image file (portrait): {filename}"),
+                "width": analysis.get("width", 0),
+                "height": analysis.get("height", 0),
+            })
+            
+            print(f"✓ {filename}: {analysis.get('description', '')[:80]}...")
+        
+        return {
+            "uploads": results,
+            "total": len(results),
+        }
+    
+    finally:
+        # Cleanup temp files
+        for path in temp_paths:
+            try:
+                os.unlink(path)
+            except:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────
@@ -215,7 +325,8 @@ async def root():
             "pipeline": "POST /pipeline - AG-UI streaming endpoint",
             "project": "GET /projects/{id} - Get project details",
             "captures": "GET /projects/{id}/captures - Get capture tasks",
-            "upload": "POST /upload - Upload single file",
+            "upload": "POST /upload - Upload single file with analysis",
+            "upload_batch": "POST /upload-batch - Upload multiple files with batch analysis",
             "from_uploads": "POST /projects/from-uploads - Create project from uploads",
             "health": "GET /health - Health check",
         }
