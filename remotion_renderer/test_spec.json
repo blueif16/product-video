@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "title": "30 second Product",
+    "durationFrames": 84,
+    "fps": 30,
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "clips": [
+    {
+      "id": "71d300e6-373f-41ce-bede-4f76dc74fcec",
+      "startFrame": 0,
+      "durationFrames": 84,
+      "layers": [
+        {
+          "orbs": true,
+          "type": "background",
+          "color": "#F8FAFC",
+          "zIndex": 0,
+          "orbColors": [
+            "#E2E8F0",
+            "#CBD5E1",
+            "#94A3B8"
+          ]
+        },
+        {
+          "src": "https://pdifoxkgolxeufdtpolt.supabase.co/storage/v1/object/public/captures/uploads/pending/tmp0tirqqkz.png",
+          "type": "image",
+          "device": "iphone",
+          "zIndex": 1,
+          "transform": {
+            "type": "zoom_in",
+            "endScale": 1.15,
+            "startScale": 1.1
+          }
+        },
+        {
+          "type": "text",
+          "style": {
+            "color": "#1A237E",
+            "fontSize": 80,
+            "textAlign": "center",
+            "fontWeight": 800,
+            "letterSpacing": "-0.02em"
+          },
+          "zIndex": 2,
+          "content": "MINDFULNESS SIMPLIFIED",
+          "position": {
+            "x": 50,
+            "y": 15
+          },
+          "animation": {
+            "exit": "fade",
+            "feel": "smooth",
+            "enter": "fade",
+            "exitDuration": 15,
+            "enterDuration": 20
+          },
+          "startFrame": 0,
+          "durationFrames": 84
+        }
+      ],
+      "composerNotes": "Creating an elegant feature highlight with a soft background and smooth zoom. The text is positioned at the top as requested (y=15) with the specified color and font size. The iPhone frame contains the app screenshot with a subtle zoom from 1.1 to 1.15 to maintain energy."
+    }
+  ]
+}
