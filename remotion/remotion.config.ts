@@ -9,4 +9,4 @@ Config.setConcurrency(4);
 Config.setChromiumOpenGlRenderer("angle");
 
 // Quality defaults
-Config.setQuality(80);
+Config.setJpegQuality(80);

@@ -5,6 +5,7 @@ Exposes the unified LangGraph pipeline via AG-UI protocol.
 """
 import uuid
 import asyncio
+import time
 from typing import AsyncGenerator, Optional
 
 from ag_ui.core import (
@@ -66,7 +67,7 @@ async def run_pipeline_stream(
     include_music: bool = True,
 ) -> AsyncGenerator[str, None]:
     """
-    Stream AG-UI events from pipeline execution.
+    Stream AG-UI events from pipeline execution with heartbeat keep-alive.
 
     Args:
         input_data: AG-UI input (messages, thread_id, run_id, state)
@@ -84,8 +85,12 @@ async def run_pipeline_stream(
     run_id = input_data.run_id or str(uuid.uuid4())
 
     print(f"📋 [PIPELINE] thread_id={thread_id[:8]}, run_id={run_id[:8]}", flush=True)
-    
+
     translator = EventTranslator(thread_id, run_id)
+
+    # 心跳追踪
+    last_event_time = time.time()
+    HEARTBEAT_INTERVAL = 15  # 秒
     
     # ─────────────────────────────────────────────────────────
     # 1. RUN_STARTED
@@ -96,6 +101,7 @@ async def run_pipeline_stream(
         thread_id=thread_id,
         run_id=run_id,
     ))
+    last_event_time = time.time()
     await asyncio.sleep(0)  # Allow event loop to send data
     
     # ─────────────────────────────────────────────────────────
@@ -136,6 +142,7 @@ async def run_pipeline_stream(
         type=EventType.STATE_SNAPSHOT,
         snapshot=initial_ui_state,
     ))
+    last_event_time = time.time()
     await asyncio.sleep(0)  # Allow event loop to send data
     
     # ─────────────────────────────────────────────────────────
@@ -187,6 +194,7 @@ async def run_pipeline_stream(
                 for ag_event in translator.translate(event, current_state):
                     print(f"  🔊 AG-UI: {ag_event.type} | {getattr(ag_event, 'step_name', '')} | {getattr(ag_event, 'delta', '')[:100] if hasattr(ag_event, 'delta') else ''}", flush=True)
                     yield encoder.encode(ag_event)
+                    last_event_time = time.time()
 
                 # Check for project ID updates
                 if current_state:
@@ -202,6 +210,7 @@ async def run_pipeline_stream(
                                 {"op": "replace", "path": "/video_project_id", "value": new_project_id},
                             ],
                         ))
+                        last_event_time = time.time()
 
                 # Periodically fetch and emit capture task status
                 if event.get("event") == "on_chain_end":
@@ -221,6 +230,13 @@ async def run_pipeline_stream(
                                 {"op": "replace", "path": "/captures_total", "value": len(tasks)},
                             ],
                         ))
+                        last_event_time = time.time()
+
+                # 心跳：保持连接活跃
+                now = time.time()
+                if now - last_event_time > HEARTBEAT_INTERVAL:
+                    yield ": heartbeat\n\n"
+                    last_event_time = now
 
                 # Small yield to allow other async tasks
                 await asyncio.sleep(0)
@@ -248,6 +264,7 @@ async def run_pipeline_stream(
                 for ag_event in translator.translate(event, current_state):
                     print(f"  🔊 AG-UI: {ag_event.type} | {getattr(ag_event, 'step_name', '')} | {getattr(ag_event, 'delta', '')[:100] if hasattr(ag_event, 'delta') else ''}", flush=True)
                     yield encoder.encode(ag_event)
+                    last_event_time = time.time()
 
                 # Check for project ID updates
                 if current_state:
@@ -263,6 +280,7 @@ async def run_pipeline_stream(
                                 {"op": "replace", "path": "/video_project_id", "value": new_project_id},
                             ],
                         ))
+                        last_event_time = time.time()
 
                 # Periodically fetch and emit capture task status
                 if event.get("event") == "on_chain_end":
@@ -282,6 +300,13 @@ async def run_pipeline_stream(
                                 {"op": "replace", "path": "/captures_total", "value": len(tasks)},
                             ],
                         ))
+                        last_event_time = time.time()
+
+                # 心跳：保持连接活跃
+                now = time.time()
+                if now - last_event_time > HEARTBEAT_INTERVAL:
+                    yield ": heartbeat\n\n"
+                    last_event_time = now
 
                 # Small yield to allow other async tasks
                 await asyncio.sleep(0)

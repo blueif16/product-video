@@ -299,16 +299,28 @@ def save_video_spec_to_db(
         raise ValueError("Failed to save video spec")
 
 
-def save_video_spec_to_file(spec: dict, output_path: str) -> str:
+def save_video_spec_to_file(spec: dict, output_path: str, video_project_id: str = None) -> str:
     """
     Save the VideoSpec to a JSON file for Remotion.
-    
+
     Returns:
         The file path
     """
-    with open(output_path, "w") as f:
-        json.dump(spec, f, indent=2)
-    
+    # 合并 RAG metadata
+    if video_project_id:
+        from tools.rag_recorder import rag_recorder
+        rag_metadata = rag_recorder.get_metadata(video_project_id)
+
+        if "metadata" not in spec:
+            spec["metadata"] = {}
+        spec["metadata"]["rag"] = rag_metadata
+
+        # 清除缓存
+        rag_recorder.clear(video_project_id)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(spec, f, indent=2, ensure_ascii=False)
+
     return output_path
 
 
@@ -375,7 +387,7 @@ def edit_assembler_node(state: dict) -> dict:
         specs_dir = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "specs")
         os.makedirs(specs_dir, exist_ok=True)
         spec_path = os.path.join(specs_dir, f"{video_project_id}.json")
-        save_video_spec_to_file(spec, spec_path)
+        save_video_spec_to_file(spec, spec_path, video_project_id)
         
         # Update project status
         client = get_client()

@@ -41,10 +41,8 @@ def create_clip_task(
     This is your creative unit. Put ALL your vision in composer_notes:
     - What feeling/energy should this moment have?
     - Should the original asset be enhanced with AI generation?
-    - Should there be text overlays? What text, what style?
-    - Should there be transitions between visual versions?
-    - How should elements be animated/composed?
-    
+    - What text, important info is needed to be passed and rendered out in this clip
+
     The composer will interpret your notes and decide what layers to create:
     - Background layers (for solid colors, gradients, animated orbs)
     - Image layers (original screenshots OR AI-generated images)
@@ -61,20 +59,6 @@ def create_clip_task(
     Returns:
         Task ID
     
-    Example composer_notes:
-    
-    "Hero moment - make this feel magical. Start with the plain dashboard,
-    then crossfade to an AI-enhanced version with subtle glow effects.
-    Add 'NEVER FORGET' text that types in dramatically at 0.5s.
-    Slow zoom towards the task counter. Calm, confident energy."
-    
-    "Quick feature flash - energetic. Use the screenshot as-is but add
-    bold 'SWIPE' text that slides in from the left. Fast zoom in.
-    No fancy enhancements, just raw energy."
-    
-    "Text-only hero - dark gradient background with glowing orbs.
-    'STREAMLINE' scales in dramatically, centered.
-    Subtitle fades in below after 0.5s. Premium, confident."
     """
     from db.supabase_client import get_client
     
@@ -299,155 +283,60 @@ def generate_enhanced_image(
 
 @tool
 def submit_clip_spec(
-    task_id: str,
-    layers_json: str,
     enter_transition_type: Optional[str] = None,
     enter_transition_frames: int = 15,
     exit_transition_type: Optional[str] = None,
     exit_transition_frames: int = 15,
     background_color: Optional[str] = None,
     notes: str = "",
+    state: Annotated[dict, InjectedState] = None,
+    # Legacy support - will be deprecated
+    task_id: Optional[str] = None,
+    layers_json: Optional[str] = None,
 ) -> str:
     """
-    Submit the complete layer-based specification for a clip.
-    
-    A clip can have multiple layers that composite together:
-    - Background layers (solid colors, gradients, animated orbs)
-    - Image layers (original assets OR generated images - same type!)
-    - Text layers (typography)
-    
-    NOTE: There's no separate "generated_image" type anymore.
-    Generated images are just images with a src path.
-    
+    Submit validated clip spec to database. Reads from draft file.
+
     Args:
-        task_id: The clip task ID
-        layers_json: JSON array of layers. Each layer has:
-        
-            ═══════════════════════════════════════════════════════════
-            BACKGROUND LAYER (for text-only clips or custom backgrounds)
-            ═══════════════════════════════════════════════════════════
-            {
-                "type": "background",
-                "zIndex": 0,
-                "color": "#0f172a",  // Solid color
-                "gradient": {"colors": ["#0f172a", "#1e1b4b"], "angle": 180},  // OR gradient
-                "orbs": true,  // OR animated glowing orbs
-                "orbColors": ["#6366f1", "#ec4899", "#8b5cf6"]  // Custom orb colors
-            }
-        
-            ═══════════════════════════════════════════════════════════
-            IMAGE LAYER (screenshots, recordings, OR generated images)
-            ═══════════════════════════════════════════════════════════
-            {
-                "type": "image",
-                "src": "path/to/asset.png",  // Captured OR generated path
-                "zIndex": 1,
-                "position": {"x": 50, "y": 45},  // Percentage coords (optional, defaults to center)
-                "scale": 0.7,  // 0.3-1.0 size multiplier (optional, defaults to fit canvas)
-                "transform": {
-                    "type": "zoom_in",  // static, ken_burns, zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down, focus
-                    "startScale": 1.0,
-                    "endScale": 1.2,
-                    "focusX": 50,  // For focus type (% from left)
-                    "focusY": 30,  // For focus type (% from top)
-                    "intensity": 1.0  // 0.5=subtle, 1.0=normal, 1.5=dramatic
-                },
-                "opacity": {"start": 1, "end": 1},  // Animate opacity over clip duration
-                "device": "iphone"  // none, iphone, iphonePro, macbook, ipad (optional)
-            }
-            
-            ═══════════════════════════════════════════════════════════
-            TEXT LAYER (typography and callouts)
-            ═══════════════════════════════════════════════════════════
-            {
-                "type": "text",
-                "content": "STREAMLINE",
-                "zIndex": 3,
-                "style": {
-                    "fontSize": 80,        // 24-32 caption, 36-48 callout, 56-72 headline, 80-120 hero
-                    "fontWeight": 800,     // 400 regular, 600 semibold, 700 bold, 800 extrabold
-                    "color": "#FFFFFF",
-                    "textAlign": "center", // left, center, right
-                    "letterSpacing": "-0.02em",  // Tighter for large text
-                    "textShadow": "0 0 60px rgba(99, 102, 241, 0.5)",  // Glow effect
-                    "lineHeight": 1.2,     // Line spacing
-                    "maxWidth": 800        // Max width in pixels
-                },
-                "animation": {
-                    "enter": "scale",      // fade, typewriter, slide_up, slide_down, slide_left, slide_right, scale, stagger, reveal, none
-                    "exit": "fade",        // fade, slide_up, slide_down, scale, none
-                    "enterDuration": 20,   // Custom enter duration in frames
-                    "exitDuration": 15     // Custom exit duration in frames
-                },
-                "position": {
-                    "preset": "center"     // center, top, bottom, left, right, top_left, top_right, bottom_left, bottom_right
-                    // OR custom position:
-                    // "x": 50, "y": 40     // Percentage from top-left (50,50 = center)
-                },
-                "startFrame": 0,           // When text appears (relative to clip start)
-                "durationFrames": 90       // How long text is visible
-            }
-        
-        enter_transition_type: fade | slide | slide_left | slide_right | slide_up | slide_down | wipe | none | null
-        enter_transition_frames: Duration of enter transition (default 15)
+        enter_transition_type: fade | slide | slide_left | slide_right | slide_up | slide_down | wipe | none
+        enter_transition_frames: Duration (default 15)
         exit_transition_type: Same options as enter
-        exit_transition_frames: Duration of exit transition (default 15)
-        background_color: Fallback background color (hex, e.g., "#0f172a")
-        notes: Your reasoning for this composition
-    
+        exit_transition_frames: Duration (default 15)
+        background_color: Fallback color (hex, e.g., "#0f172a")
+        notes: Composition reasoning
+
     Returns:
         Confirmation message
-        
-    ═══════════════════════════════════════════════════════════
-    EXAMPLE: Screenshot with AI-enhanced crossfade
-    ═══════════════════════════════════════════════════════════
-    
-    // First call generate_enhanced_image to get the path
-    // Then use BOTH as image layers with opacity crossfade:
-    
-    layers_json = '''[
-        {
-            "type": "image",
-            "src": "/path/to/original.png",
-            "zIndex": 1,
-            "transform": {"type": "zoom_in", "startScale": 1.0, "endScale": 1.15},
-            "opacity": {"start": 1, "end": 0}
-        },
-        {
-            "type": "image",
-            "src": "/assets/generated/xxx.png",
-            "zIndex": 2,
-            "transform": {"type": "zoom_in", "startScale": 1.0, "endScale": 1.15},
-            "opacity": {"start": 0, "end": 1}
-        },
-        {
-            "type": "text",
-            "content": "FOCUS",
-            "zIndex": 3,
-            "style": {"fontSize": 80, "fontWeight": 800, "color": "#FFFFFF"},
-            "animation": {"enter": "typewriter", "exit": "fade"},
-            "position": {"preset": "center"},
-            "startFrame": 15,
-            "durationFrames": 60
-        }
-    ]'''
     """
     from db.supabase_client import get_client
+    from tools.draft_tools import read_draft, get_draft_path
+    
+    # Get clip_id from state or legacy task_id param
+    clip_id = state.get("clip_id") if state else task_id
+    if not clip_id:
+        return "ERROR: No clip_id in state"
+    
+    # Try to read from draft file first (new workflow)
+    layers = read_draft(clip_id)
+    
+    # Fall back to legacy layers_json parameter
+    if layers is None and layers_json:
+        try:
+            layers = json.loads(layers_json)
+            if not isinstance(layers, list):
+                return "ERROR: layers_json must be a JSON array"
+        except json.JSONDecodeError as e:
+            return f"ERROR: Invalid JSON in layers_json: {e}"
+    
+    if layers is None:
+        return "ERROR: No draft found and no layers_json provided. Call draft_clip_spec first."
     
     client = get_client()
     
-    # Parse the layers JSON
-    try:
-        layers = json.loads(layers_json)
-        if not isinstance(layers, list):
-            return "ERROR: layers_json must be a JSON array"
-    except json.JSONDecodeError as e:
-        return f"ERROR: Invalid JSON in layers_json: {e}"
-    
     # Get the task to know duration
-    task_result = client.table("clip_tasks").select("duration_s").eq("id", task_id).single().execute()
+    task_result = client.table("clip_tasks").select("duration_s").eq("id", clip_id).single().execute()
     if not task_result.data:
-        return f"ERROR: Task {task_id} not found"
+        return f"ERROR: Task {clip_id} not found"
     
     duration_s = task_result.data["duration_s"]
     fps = 30
@@ -474,20 +363,26 @@ def submit_clip_spec(
     
     if background_color:
         clip_spec["backgroundColor"] = background_color
-    
+
     # Update the task
     result = client.table("clip_tasks").update({
         "clip_spec": clip_spec,
         "status": "composed",
-    }).eq("id", task_id).execute()
+    }).eq("id", clip_id).execute()
     
     if result.data:
         layer_types = [l.get('type', 'unknown') for l in layers]
         layer_summary = ", ".join(layer_types)
         print(f"   ✓ Clip spec submitted: [{layer_summary}]")
-        return f"Clip spec submitted for task {task_id} with {len(layers)} layers: {layer_summary}"
+        
+        # Clean up draft file
+        draft_path = get_draft_path(clip_id)
+        if draft_path.exists():
+            draft_path.unlink()
+        
+        return f"Clip spec submitted for task {clip_id} with {len(layers)} layers: {layer_summary}"
     else:
-        return f"ERROR: Failed to update clip task {task_id}"
+        return f"ERROR: Failed to update clip task {clip_id}"
 
 
 # ─────────────────────────────────────────────────────────────
