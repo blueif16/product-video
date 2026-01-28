@@ -21,27 +21,15 @@ def query_execution_patterns(
     match_count: int = 3
 ) -> str:
     """
-    Query the remotion execution pattern knowledge base.
-
-    Use this when you need specific guidance on:
-    - Energy execution techniques (kinetic, elegant, calm, bold, creative)
-    - Layout patterns (vertical stack, horizontal split, centered hero)
-    - Timing and temporal distribution strategies
-    - Animation combinations and techniques
-    - Spacing calculations and positioning formulas
-    - Common mistakes to avoid (anti-patterns)
+    Query remotion execution pattern knowledge base for energy-specific techniques,
+    layout patterns, timing strategies, and animation combinations.
 
     Args:
-        query: Natural language query describing what patterns you need.
-               Examples:
-               - "kinetic energy staggered text reveals"
-               - "vertical stack layout with portrait image"
-               - "text spacing calculation for stacked elements"
-               - "5 second clip timing distribution"
+        query: Natural language query (e.g., "kinetic energy staggered text reveals")
         match_count: Number of patterns to retrieve (default 3, max 5)
 
     Returns:
-        Formatted patterns with detailed execution guidance
+        Formatted patterns with execution guidance
     """
     try:
         print(f"   🔍 Querying knowledge base: {query[:60]}...")
@@ -54,6 +42,49 @@ def query_execution_patterns(
             return "No patterns found. Try a different query or proceed with your own knowledge."
 
         print(f"   ✓ Found {len(results)} execution patterns")
+
+        sections = []
+        for i, result in enumerate(results, 1):
+            content = result.get("content", "")
+            metadata = result.get("metadata", {})
+            pattern_type = metadata.get("type", "pattern")
+
+            sections.append(f"### Pattern {i} ({pattern_type})\n\n{content}")
+
+        return "\n\n---\n\n".join(sections)
+
+    except Exception as e:
+        print(f"   ❌ RAG query failed: {str(e)}")
+        return f"RAG query failed: {str(e)}. Proceed with your own knowledge."
+
+
+@tool
+def query_video_planning_patterns(
+    query: str,
+    match_count: int = 3
+) -> str:
+    """
+    Query video planning pattern knowledge base for high-level video structure,
+    narrative arcs, rhythm design, clip functions, and overall pacing strategies.
+
+    Args:
+        query: Natural language query (e.g., "hook body cta structure for product demo")
+        match_count: Number of patterns to retrieve (default 3, max 5)
+
+    Returns:
+        Formatted patterns with planning guidance
+    """
+    try:
+        print(f"   🔍 Querying planning knowledge base: {query[:60]}...")
+
+        rag = RAGStore(namespace="video_planning_patterns")
+        results = rag.search(query, top_k=min(match_count, 5))
+
+        if not results:
+            print(f"   ⚠️  No planning patterns found for query")
+            return "No planning patterns found. Try a different query or proceed with your own knowledge."
+
+        print(f"   ✓ Found {len(results)} planning patterns")
 
         sections = []
         for i, result in enumerate(results, 1):

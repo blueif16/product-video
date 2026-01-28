@@ -1,31 +1,39 @@
 /**
- * ScaleIn Animation Wrapper
+ * ScaleIn Animation Wrapper - ENHANCED
  * 
- * Scales children in with spring physics and configurable origin.
- * Supports animation "feel": snappy, smooth, bouncy
+ * Supports custom bezier curves, continuous motion, and advanced transforms.
  */
 
 import React from "react";
 import { useCurrentFrame, useVideoConfig, interpolate, spring } from "remotion";
+import { 
+  SPRING_CONFIGS, 
+  AnimationFeel, 
+  SpringConfig,
+  getEasingFromString,
+  getContinuousMotionValues,
+  ContinuousMotionConfig,
+} from "../lib/easing";
 
 type Origin = "center" | "top" | "bottom" | "left" | "right" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
-type AnimationFeel = "snappy" | "smooth" | "bouncy";
-
-// Spring physics presets
-const SPRING_CONFIGS: Record<AnimationFeel, { damping: number; stiffness: number; mass: number }> = {
-  snappy: { damping: 25, stiffness: 400, mass: 0.3 },
-  smooth: { damping: 20, stiffness: 150, mass: 0.5 },
-  bouncy: { damping: 8, stiffness: 200, mass: 0.5 },
-};
 
 interface ScaleInProps {
   children: React.ReactNode;
   delay?: number;
-  duration?: number;  // Duration in frames (uses linear if set, spring if not)
+  duration?: number;
   startScale?: number;
   endScale?: number;
   origin?: Origin;
-  feel?: AnimationFeel;  // NEW: Control spring physics
+  feel?: AnimationFeel;
+  /** NEW: Custom spring config (overrides feel) */
+  springConfig?: SpringConfig;
+  /** NEW: Custom easing string (overrides spring) */
+  easing?: string;
+  /** NEW: Continuous motion after entrance */
+  continuousMotion?: ContinuousMotionConfig;
+  /** NEW: Include rotation */
+  includeRotation?: boolean;
+  startRotation?: number;
   style?: React.CSSProperties;
 }
 
@@ -33,19 +41,30 @@ export const ScaleIn: React.FC<ScaleInProps> = ({
   children,
   delay = 0,
   duration,
-  startScale = 0.85,  // Start close to 1 for punchy feel
+  startScale = 0.85,
   endScale = 1,
   origin = "center",
   feel = "snappy",
+  springConfig,
+  easing,
+  continuousMotion,
+  includeRotation = false,
+  startRotation = -5,
   style,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   let progress: number;
+  const effectiveFrame = frame - delay;
   
-  if (duration !== undefined) {
-    // Linear interpolation for precise timing
+  if (easing) {
+    const customEasing = getEasingFromString(easing);
+    const linearProgress = duration 
+      ? Math.min(1, Math.max(0, effectiveFrame / duration))
+      : Math.min(1, Math.max(0, effectiveFrame / 20));
+    progress = customEasing ? customEasing(linearProgress) : linearProgress;
+  } else if (duration !== undefined) {
     progress = interpolate(
       frame,
       [delay, delay + duration],
@@ -53,16 +72,26 @@ export const ScaleIn: React.FC<ScaleInProps> = ({
       { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
     );
   } else {
-    // Spring animation with customizable feel
-    const springConfig = SPRING_CONFIGS[feel];
+    const config = springConfig ?? SPRING_CONFIGS[feel];
     progress = spring({
-      frame: frame - delay,
+      frame: effectiveFrame,
       fps,
-      config: springConfig,
+      config,
     });
   }
 
-  const scale = interpolate(progress, [0, 1], [startScale, endScale]);
+  let scale = interpolate(progress, [0, 1], [startScale, endScale]);
+  let rotation = includeRotation ? interpolate(progress, [0, 1], [startRotation, 0]) : 0;
+  let opacity = progress;
+
+  // Apply continuous motion after entrance
+  if (continuousMotion && progress >= 1) {
+    const entranceDuration = duration ?? 20;
+    const motionFrame = effectiveFrame - entranceDuration;
+    const motionValues = getContinuousMotionValues(motionFrame, continuousMotion);
+    scale *= motionValues.scale;
+    opacity *= motionValues.opacity;
+  }
 
   const originMap: Record<Origin, string> = {
     center: "center center",
@@ -79,9 +108,9 @@ export const ScaleIn: React.FC<ScaleInProps> = ({
   return (
     <div
       style={{
-        transform: `scale(${scale})`,
+        transform: `scale(${scale}) rotate(${rotation}deg)`,
         transformOrigin: originMap[origin],
-        opacity: progress,
+        opacity,
         ...style,
       }}
     >
@@ -92,28 +121,42 @@ export const ScaleIn: React.FC<ScaleInProps> = ({
 
 /**
  * PopIn - Bouncy scale animation (scale overshoots then settles)
- * Always uses bouncy spring physics for playful feel
  */
 interface PopInProps {
   children: React.ReactNode;
   delay?: number;
+  /** NEW: Custom spring config */
+  springConfig?: SpringConfig;
+  /** NEW: Continuous motion */
+  continuousMotion?: ContinuousMotionConfig;
   style?: React.CSSProperties;
 }
 
 export const PopIn: React.FC<PopInProps> = ({
   children,
   delay = 0,
+  springConfig,
+  continuousMotion,
   style,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Always bouncy for PopIn
-  const scale = spring({
-    frame: frame - delay,
+  const config = springConfig ?? SPRING_CONFIGS.bouncy;
+  const effectiveFrame = frame - delay;
+  
+  let scale = spring({
+    frame: effectiveFrame,
     fps,
-    config: SPRING_CONFIGS.bouncy,
+    config,
   });
+
+  // Apply continuous motion
+  if (continuousMotion && scale >= 0.99) {
+    const motionFrame = Math.max(0, effectiveFrame - 20);
+    const motionValues = getContinuousMotionValues(motionFrame, continuousMotion);
+    scale *= motionValues.scale;
+  }
 
   return (
     <div
@@ -129,7 +172,7 @@ export const PopIn: React.FC<PopInProps> = ({
 };
 
 /**
- * ZoomIn - Smooth zoom without bounce (uses smooth feel)
+ * ZoomIn - Smooth zoom without bounce
  */
 interface ZoomInProps {
   children: React.ReactNode;
@@ -137,6 +180,10 @@ interface ZoomInProps {
   duration?: number;
   startScale?: number;
   feel?: AnimationFeel;
+  /** NEW: Custom easing */
+  easing?: string;
+  /** NEW: Continuous motion */
+  continuousMotion?: ContinuousMotionConfig;
   style?: React.CSSProperties;
 }
 
@@ -146,14 +193,21 @@ export const ZoomIn: React.FC<ZoomInProps> = ({
   duration = 30,
   startScale = 0.8,
   feel = "smooth",
+  easing,
+  continuousMotion,
   style,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   let progress: number;
+  const effectiveFrame = frame - delay;
   
-  if (duration !== undefined) {
+  if (easing) {
+    const customEasing = getEasingFromString(easing);
+    const linearProgress = Math.min(1, Math.max(0, effectiveFrame / duration));
+    progress = customEasing ? customEasing(linearProgress) : linearProgress;
+  } else if (duration !== undefined) {
     progress = interpolate(
       frame,
       [delay, delay + duration],
@@ -162,14 +216,22 @@ export const ZoomIn: React.FC<ZoomInProps> = ({
     );
   } else {
     progress = spring({
-      frame: frame - delay,
+      frame: effectiveFrame,
       fps,
       config: SPRING_CONFIGS[feel],
     });
   }
 
-  const scale = interpolate(progress, [0, 1], [startScale, 1]);
-  const opacity = interpolate(progress, [0, 0.5], [0, 1], { extrapolateRight: "clamp" });
+  let scale = interpolate(progress, [0, 1], [startScale, 1]);
+  let opacity = interpolate(progress, [0, 0.5], [0, 1], { extrapolateRight: "clamp" });
+
+  // Apply continuous motion
+  if (continuousMotion && progress >= 1) {
+    const motionFrame = effectiveFrame - duration;
+    const motionValues = getContinuousMotionValues(motionFrame, continuousMotion);
+    scale *= motionValues.scale;
+    opacity *= motionValues.opacity;
+  }
 
   return (
     <div
@@ -177,6 +239,104 @@ export const ZoomIn: React.FC<ZoomInProps> = ({
         transform: `scale(${scale})`,
         transformOrigin: "center center",
         opacity,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+/**
+ * ScaleOut - Scale down animation (for exits)
+ */
+interface ScaleOutProps {
+  children: React.ReactNode;
+  delay?: number;
+  duration?: number;
+  endScale?: number;
+  feel?: AnimationFeel;
+  easing?: string;
+  style?: React.CSSProperties;
+}
+
+export const ScaleOut: React.FC<ScaleOutProps> = ({
+  children,
+  delay = 0,
+  duration = 20,
+  endScale = 0.85,
+  feel = "snappy",
+  easing,
+  style,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  let progress: number;
+  const effectiveFrame = frame - delay;
+  
+  if (easing) {
+    const customEasing = getEasingFromString(easing);
+    const linearProgress = Math.min(1, Math.max(0, effectiveFrame / duration));
+    progress = customEasing ? customEasing(linearProgress) : linearProgress;
+  } else {
+    progress = interpolate(
+      frame,
+      [delay, delay + duration],
+      [0, 1],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+    );
+  }
+
+  const scale = interpolate(progress, [0, 1], [1, endScale]);
+  const opacity = interpolate(progress, [0, 1], [1, 0]);
+
+  return (
+    <div
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "center center",
+        opacity,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+/**
+ * PulseScale - Continuous pulsing scale animation
+ */
+interface PulseScaleProps {
+  children: React.ReactNode;
+  delay?: number;
+  minScale?: number;
+  maxScale?: number;
+  cycleFrames?: number;
+  style?: React.CSSProperties;
+}
+
+export const PulseScale: React.FC<PulseScaleProps> = ({
+  children,
+  delay = 0,
+  minScale = 1.0,
+  maxScale = 1.03,
+  cycleFrames = 45,
+  style,
+}) => {
+  const frame = useCurrentFrame();
+  const effectiveFrame = Math.max(0, frame - delay);
+  
+  const phase = (effectiveFrame / cycleFrames) * Math.PI * 2;
+  const progress = (Math.sin(phase) + 1) / 2;
+  const scale = minScale + progress * (maxScale - minScale);
+
+  return (
+    <div
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "center center",
         ...style,
       }}
     >

@@ -1,30 +1,38 @@
 /**
- * SlideIn Animation Wrapper
+ * SlideIn Animation Wrapper - ENHANCED
  * 
- * Slides children in from specified direction with customizable spring physics.
- * Supports animation "feel": snappy, smooth, bouncy
+ * Supports custom bezier curves, irregular stagger, and continuous motion.
  */
 
 import React from "react";
 import { useCurrentFrame, useVideoConfig, interpolate, spring } from "remotion";
+import { 
+  SPRING_CONFIGS, 
+  AnimationFeel, 
+  SpringConfig,
+  getEasingFromString,
+  getContinuousMotionValues,
+  ContinuousMotionConfig,
+} from "../lib/easing";
 
 type Direction = "left" | "right" | "top" | "bottom";
-type AnimationFeel = "snappy" | "smooth" | "bouncy";
-
-// Spring physics presets
-const SPRING_CONFIGS: Record<AnimationFeel, { damping: number; stiffness: number; mass: number }> = {
-  snappy: { damping: 25, stiffness: 400, mass: 0.3 },
-  smooth: { damping: 20, stiffness: 150, mass: 0.5 },
-  bouncy: { damping: 8, stiffness: 200, mass: 0.5 },
-};
 
 interface SlideInProps {
   children: React.ReactNode;
   direction?: Direction;
   delay?: number;
-  duration?: number;  // Duration in frames (uses linear if set, spring if not)
+  duration?: number;
   distance?: number;
-  feel?: AnimationFeel;  // NEW: Control spring physics
+  feel?: AnimationFeel;
+  /** NEW: Custom spring config (overrides feel) */
+  springConfig?: SpringConfig;
+  /** NEW: Custom easing string (overrides spring) */
+  easing?: string;
+  /** NEW: Continuous motion after entrance */
+  continuousMotion?: ContinuousMotionConfig;
+  /** NEW: Include scale in animation */
+  includeScale?: boolean;
+  startScale?: number;
   style?: React.CSSProperties;
 }
 
@@ -35,14 +43,27 @@ export const SlideIn: React.FC<SlideInProps> = ({
   duration,
   distance = 50,
   feel = "snappy",
+  springConfig,
+  easing,
+  continuousMotion,
+  includeScale = false,
+  startScale = 0.95,
   style,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   let progress: number;
+  const effectiveFrame = frame - delay;
   
-  if (duration !== undefined) {
+  if (easing) {
+    // Custom bezier easing
+    const customEasing = getEasingFromString(easing);
+    const linearProgress = duration 
+      ? Math.min(1, Math.max(0, effectiveFrame / duration))
+      : Math.min(1, Math.max(0, effectiveFrame / 20));
+    progress = customEasing ? customEasing(linearProgress) : linearProgress;
+  } else if (duration !== undefined) {
     // Linear interpolation for precise timing
     progress = interpolate(
       frame,
@@ -52,36 +73,56 @@ export const SlideIn: React.FC<SlideInProps> = ({
     );
   } else {
     // Spring animation with customizable feel
-    const springConfig = SPRING_CONFIGS[feel];
+    const config = springConfig ?? SPRING_CONFIGS[feel];
     progress = spring({
-      frame: frame - delay,
+      frame: effectiveFrame,
       fps,
-      config: springConfig,
+      config,
     });
   }
 
-  const getTransform = (): string => {
-    const offset = interpolate(progress, [0, 1], [distance, 0]);
-    
-    switch (direction) {
-      case "left":
-        return `translateX(${-offset}px)`;
-      case "right":
-        return `translateX(${offset}px)`;
-      case "top":
-        return `translateY(${-offset}px)`;
-      case "bottom":
-        return `translateY(${offset}px)`;
-      default:
-        return "none";
-    }
+  const getBaseOffset = (): number => {
+    return interpolate(progress, [0, 1], [distance, 0]);
   };
+
+  let translateX = 0;
+  let translateY = 0;
+  const offset = getBaseOffset();
+  
+  switch (direction) {
+    case "left":
+      translateX = -offset;
+      break;
+    case "right":
+      translateX = offset;
+      break;
+    case "top":
+      translateY = -offset;
+      break;
+    case "bottom":
+      translateY = offset;
+      break;
+  }
+
+  let scale = includeScale ? interpolate(progress, [0, 1], [startScale, 1]) : 1;
+  let opacity = progress;
+
+  // Apply continuous motion after entrance
+  if (continuousMotion && progress >= 1) {
+    const entranceDuration = duration ?? 20;
+    const motionFrame = effectiveFrame - entranceDuration;
+    const motionValues = getContinuousMotionValues(motionFrame, continuousMotion);
+    translateX += motionValues.x;
+    translateY += motionValues.y;
+    scale *= motionValues.scale;
+    opacity *= motionValues.opacity;
+  }
 
   return (
     <div
       style={{
-        transform: getTransform(),
-        opacity: progress,
+        transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
+        opacity,
         ...style,
       }}
     >

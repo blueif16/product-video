@@ -1,9 +1,22 @@
-// Animation wrappers
+/**
+ * Components Index - FULLY ENHANCED
+ * 
+ * Exports all animation components with full feature support.
+ * Includes all RAG knowledge implementations.
+ */
+
+// ─────────────────────────────────────────────────────────────
+// ANIMATION WRAPPERS
+// ─────────────────────────────────────────────────────────────
+
 export { FadeIn, FadeInOut } from "./FadeIn";
 export { SlideIn, SlideUp, SlideDown, SlideLeft, SlideRight } from "./SlideIn";
 export { ScaleIn, PopIn, ZoomIn } from "./ScaleIn";
 
-// Text animations
+// ─────────────────────────────────────────────────────────────
+// TEXT ANIMATIONS
+// ─────────────────────────────────────────────────────────────
+
 export {
   TypewriterText,
   StaggeredText,
@@ -12,15 +25,36 @@ export {
   HighlightText,
   RevealText,
   WaveText,
+  PulseText,
+  SplitText,
+  ScrambleText,
+  BounceInText,
 } from "./AnimatedText";
 
-// Image effects
-export { KenBurns, FocusZoom, ParallaxImage } from "./KenBurns";
+// ─────────────────────────────────────────────────────────────
+// IMAGE EFFECTS & TRANSFORMS
+// ─────────────────────────────────────────────────────────────
 
-// Device mockups
+export { 
+  KenBurns, 
+  FocusZoom, 
+  ParallaxImage,
+  KeyframePan,
+  CinematicPan,
+  RevealImage,
+  SplitScreen,
+} from "./KenBurns";
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE MOCKUPS
+// ─────────────────────────────────────────────────────────────
+
 export { DeviceFrame, FloatingDevice, RotatingDevice } from "./DeviceFrame";
 
-// Audio
+// ─────────────────────────────────────────────────────────────
+// AUDIO COMPONENTS
+// ─────────────────────────────────────────────────────────────
+
 export {
   BackgroundMusic,
   SoundEffect,
@@ -29,7 +63,10 @@ export {
   AudioDucker,
 } from "./AudioTrack";
 
-// Backgrounds
+// ─────────────────────────────────────────────────────────────
+// BACKGROUNDS
+// ─────────────────────────────────────────────────────────────
+
 export {
   GradientBackground,
   GlowingOrb,
@@ -37,13 +74,64 @@ export {
   GridBackground,
   NoiseBackground,
   RadialGradientBackground,
+  MeshGradientBackground,
+  AuroraBackground,
+  ParticlesBackground,
 } from "./Background";
 
-// Spring physics presets (for direct use)
-export const SPRING_CONFIGS = {
-  snappy: { damping: 25, stiffness: 400, mass: 0.3 },
-  smooth: { damping: 20, stiffness: 150, mass: 0.5 },
-  bouncy: { damping: 8, stiffness: 200, mass: 0.5 },
-} as const;
+// ─────────────────────────────────────────────────────────────
+// CALLOUTS & CONNECTORS
+// ─────────────────────────────────────────────────────────────
 
-export type AnimationFeel = keyof typeof SPRING_CONFIGS;
+export { 
+  ConnectorLine,
+  CalloutLine,
+  PathDraw,
+} from "./ConnectorLine";
+
+// ─────────────────────────────────────────────────────────────
+// BUTTONS, SHAPES & CTA
+// ─────────────────────────────────────────────────────────────
+
+export { 
+  ButtonLayer,
+  PillBadge,
+  ShapeLayer,
+  CardLayer,
+} from "./ButtonLayer";
+
+// ─────────────────────────────────────────────────────────────
+// EASING & ANIMATION UTILITIES
+// ─────────────────────────────────────────────────────────────
+
+export {
+  // Spring configs
+  SPRING_CONFIGS,
+  // Bezier presets
+  BEZIER_PRESETS,
+  // Continuous motion presets
+  CONTINUOUS_MOTION_PRESETS,
+  // Shadow presets
+  SHADOW_PRESETS,
+  
+  // Functions
+  getEasingFromString,
+  getStaggerDelay,
+  getDurationWithVariance,
+  getContinuousMotionValues,
+  parseBezierString,
+  createBezierEasing,
+  msToFrames,
+  framesToMs,
+  getDefaultExitDuration,
+  generateMultiLayerShadow,
+} from "../lib/easing";
+
+// Re-export types
+export type { 
+  AnimationFeel,
+  SpringConfig,
+  ContinuousMotionConfig,
+  BezierPreset,
+  ShadowLayer,
+} from "../lib/easing";

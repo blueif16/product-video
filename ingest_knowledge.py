@@ -194,58 +194,189 @@ def test_search(namespace: str, query: str, match_count: int = 3):
         print()
 
 
+def list_namespaces() -> list[dict]:
+    """
+    List all available namespaces with their statistics.
+
+    Returns:
+        List of namespace info dicts
+    """
+    print(f"\n{'='*60}")
+    print(f"Available Namespaces")
+    print(f"{'='*60}\n")
+
+    # Get all unique namespaces from documents table
+    rag = RAGStore()
+    result = rag.client.table("documents").select("namespace").execute()
+
+    if not result.data:
+        print("No namespaces found.")
+        return []
+
+    # Count documents and relations per namespace
+    namespaces = {}
+    for row in result.data:
+        ns = row["namespace"]
+        if ns not in namespaces:
+            namespaces[ns] = {"namespace": ns, "documents": 0, "relations": 0}
+        namespaces[ns]["documents"] += 1
+
+    # Get relations count
+    rel_result = rag.client.table("doc_relations").select("namespace").execute()
+    for row in rel_result.data:
+        ns = row["namespace"]
+        if ns in namespaces:
+            namespaces[ns]["relations"] += 1
+
+    # Display
+    namespace_list = sorted(namespaces.values(), key=lambda x: x["namespace"])
+    for ns_info in namespace_list:
+        print(f"  {ns_info['namespace']}")
+        print(f"    Documents: {ns_info['documents']}")
+        print(f"    Relations: {ns_info['relations']}")
+        print()
+
+    print(f"Total: {len(namespace_list)} namespace(s)")
+    print(f"{'='*60}\n")
+
+    return namespace_list
+
+
+def clear_namespace(namespace: str, confirm: bool = True) -> dict:
+    """
+    Clear all data in a namespace.
+
+    This will delete:
+    - All documents in the namespace
+    - All graph relations (doc_relations) in the namespace
+
+    Args:
+        namespace: Namespace to clear
+        confirm: Require confirmation before clearing
+
+    Returns:
+        Statistics about deletion
+    """
+    print(f"\n{'='*60}")
+    print(f"Clear Namespace")
+    print(f"{'='*60}")
+    print(f"Namespace: {namespace}")
+    print(f"{'='*60}\n")
+
+    # Show current stats
+    rag = RAGStore(namespace=namespace)
+    stats = rag.stats()
+
+    print(f"Current state:")
+    print(f"  Documents: {stats['documents']}")
+    print(f"  Relations: {stats['relations']}")
+    print()
+
+    if stats['documents'] == 0 and stats['relations'] == 0:
+        print("Namespace is already empty.")
+        return {"deleted": 0}
+
+    # Confirm
+    if confirm:
+        response = input(f"Are you sure you want to delete ALL data in '{namespace}'? (yes/no): ")
+        if response.lower() != "yes":
+            print("Cancelled.")
+            return {"deleted": 0, "cancelled": True}
+
+    # Delete
+    print("\nDeleting...")
+    result = rag.delete_all()
+
+    print(f"\n✓ Deleted {result['deleted']} documents and all relations")
+    print(f"{'='*60}\n")
+
+    return result
+
+
 def main():
     """Main entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Ingest RAG knowledge from JSON",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Ingest from template
-  python ingest_knowledge.py rag_research_template.json
-  
+  python ingest_knowledge.py assets/knowledge/v2.json
+  python ingest_knowledge.py assets/knowledge/v2_gemini.json
+
+
   # Dry run (preview)
   python ingest_knowledge.py my_patterns.json --dry-run
-  
+
   # Override namespace
   python ingest_knowledge.py patterns.json --namespace my_custom_namespace
-  
+
   # Ingest then test
   python ingest_knowledge.py patterns.json --test "kinetic energy text"
+
+  # Clear namespace
+  python ingest_knowledge.py --clear --namespace remotion_execution_patterns
+
+  # Clear without confirmation (dangerous!)
+  python ingest_knowledge.py --clear --namespace test_data --yes
+
+  # List all namespaces
+  python ingest_knowledge.py --list
         """
     )
-    
-    parser.add_argument("json_file", help="Path to JSON file with patterns")
+
+    parser.add_argument("json_file", nargs="?", help="Path to JSON file with patterns")
     parser.add_argument("--namespace", help="Override namespace from JSON")
     parser.add_argument("--dry-run", action="store_true", help="Preview without ingesting")
     parser.add_argument("--test", metavar="QUERY", help="Test search after ingestion")
     parser.add_argument("--match-count", type=int, default=3, help="Results for test query")
+    parser.add_argument("--list", action="store_true", help="List all namespaces")
+    parser.add_argument("--clear", action="store_true", help="Clear all data in namespace")
+    parser.add_argument("--yes", action="store_true", help="Skip confirmation for --clear")
     
     args = parser.parse_args()
-    
-    # Validate file exists
+
+    # Handle list mode
+    if args.list:
+        list_namespaces()
+        sys.exit(0)
+
+    # Handle clear mode
+    if args.clear:
+        if not args.namespace:
+            print("Error: --namespace is required when using --clear")
+            sys.exit(1)
+        clear_namespace(args.namespace, confirm=not args.yes)
+        sys.exit(0)
+
+    # Validate file exists for ingest mode
+    if not args.json_file:
+        print("Error: json_file is required (or use --clear)")
+        parser.print_help()
+        sys.exit(1)
+
     if not Path(args.json_file).exists():
         print(f"Error: File not found: {args.json_file}")
         sys.exit(1)
-    
+
     # Ingest
     stats = ingest_from_json(
         args.json_file,
         namespace_override=args.namespace,
         dry_run=args.dry_run,
     )
-    
+
     # Test search if requested
     if args.test and not args.dry_run:
         # Load namespace from JSON if not overridden
         with open(args.json_file, 'r') as f:
             data = json.load(f)
         namespace = args.namespace or data.get("namespace", "remotion_execution_patterns")
-        
+
         test_search(namespace, args.test, args.match_count)
-    
+
     # Exit code based on errors
     if stats.get("errors"):
         sys.exit(1)

@@ -56,19 +56,25 @@ def create_test_clip_task():
     # PLANNER'S PRODUCTION NOTE
     # Style constants (colors, fonts) + Energy + Timing ONLY
     # NO technique instructions (orbs/shapes/etc = composer's creative choice)
-    composer_notes = """Hero intro.
+    # PLANNER'S PRODUCTION NOTE
+    composer_notes = """Fashion collection hero.
 
-Asset: 1170×2532 portrait, elegant clothing grid, white dominant
-BG: Deep charcoal (#1a1a1a) for contrast
-Text: Warm cream (#faf5ef) primary, rgba(250,245,239,0.65) supporting
-Type: Inter 600 primary, Inter 400 supporting
+Asset:
+- 1170×2532 portrait, clothing grid, white/neutral dominant
+- Editorial fashion layout, structured arrangement
 
-Energy: ELEGANT PREMIUM
-- Sophisticated fashion, smooth confident reveals
-- Refined polished, high-end feel
+Text Content:
+This clip introduces the Collection 24 line with the anchor statement "STYLE REFINED" and supporting message "Curated for the modern wardrobe". The collection highlights three key features: timeless silhouettes, sustainable fabrics, and limited edition pieces. Include the value hook that orders over $150 get free shipping. Close with a call to action "Explore the Edit" and the brand destination vaulteclothing.com.
 
-Message: "STYLE REFINED" + tagline
-Timing: 5.0s, spread reveals across full duration"""
+Style Ranges:
+- BG: Dark tones (#0d0d0d to #2a2a2a) or warm neutrals (#f5f0e8 to #ffffff)
+- Text: Cream (#faf5ef), or dark (#1a1a1a) if light BG
+- Type: Inter, weights 300-600, sizes 16-96px
+
+Energy: elegant, premium, sophisticated, fashion, smooth, confident, refined, polished, high-end
+
+Duration: 8.0s (240 frames @ 30fps)
+"""
     
     clip_result = client.table("clip_tasks").insert({
         "video_project_id": project_id,
