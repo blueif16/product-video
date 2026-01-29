@@ -864,6 +864,27 @@ const TextLayerRenderer: React.FC<{
   const frame = useCurrentFrame();
   const { content, style, animation, position, startFrame = 0, durationFrames } = layer;
 
+  // Defensive: Check if animation exists
+  if (!animation) {
+    console.warn('Text layer missing animation config, using defaults:', { content, startFrame });
+    return (
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        fontFamily,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        color: style.color,
+        textAlign: style.textAlign ?? "center",
+      }}>
+        {content}
+      </div>
+    );
+  }
+
   // Check visibility
   const localFrame = clipFrame - startFrame;
   const textDuration = durationFrames ?? clipDuration - startFrame;

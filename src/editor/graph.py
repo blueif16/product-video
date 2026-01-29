@@ -21,10 +21,10 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 from langgraph.checkpoint.memory import InMemorySaver
 
-from .core.state import EditorState
-from .planners import edit_planner_node
-from .composers import compose_single_clip_node, compose_all_clips_node
-from .core.assembler import edit_assembler_node
+from src.editor.core.state import EditorState
+from src.editor.planners import edit_planner_node
+from src.editor.composers import compose_single_clip_node, compose_all_clips_node
+from src.editor.core.assembler import edit_assembler_node
 
 
 # ─────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ def build_editor_graph(
     # Render
     if include_render:
         try:
-            from renderer.render_client import remotion_render_node
+            from ..renderer.render_client import remotion_render_node
             builder.add_node("render", remotion_render_node)
         except ImportError:
             print("⚠️  Render client not available, skipping render node")
@@ -133,7 +133,7 @@ def build_editor_graph(
     # Music generation node (runs AFTER render)
     if include_music and include_render:
         from .core.music_planner import music_planner_node
-        from tools.music_generator import music_generator_node, mux_audio_video_node
+        from ..tools.music_generator import music_generator_node, mux_audio_video_node
         
         builder.add_node("music_plan", music_planner_node)
         builder.add_node("music_generate", music_generator_node)
@@ -272,7 +272,7 @@ def run_editor_with_checkpointer(
     
     if include_render:
         try:
-            from renderer.render_client import remotion_render_node
+            from ..renderer.render_client import remotion_render_node
             builder.add_node("render", remotion_render_node)
         except ImportError:
             include_render = False
@@ -280,7 +280,7 @@ def run_editor_with_checkpointer(
     
     if include_music and include_render:
         from .core.music_planner import music_planner_node
-        from tools.music_generator import music_generator_node, mux_audio_video_node
+        from ..tools.music_generator import music_generator_node, mux_audio_video_node
         builder.add_node("music_plan", music_planner_node)
         builder.add_node("music_generate", music_generator_node)
         builder.add_node("mux_audio", mux_audio_video_node)
@@ -317,7 +317,7 @@ def run_editor_with_checkpointer(
 def run_composing_only(video_project_id: str) -> EditorState:
     """Run only the clip composition phase (skip planning)."""
     from .core.loader import load_editor_state
-    from tools.editor_tools import get_pending_clip_tasks
+    from ..tools.editor_tools import get_pending_clip_tasks
     
     print(f"\n{'='*60}")
     print(f"Compose Only - Project: {video_project_id}")
@@ -372,7 +372,7 @@ def run_music_only(video_project_id: str, video_path: str = None) -> EditorState
     """
     from .core.loader import load_editor_state
     from .core.music_planner import music_planner_node
-    from tools.music_generator import music_generator_node, mux_audio_video_node
+    from ..tools.music_generator import music_generator_node, mux_audio_video_node
     
     print(f"\n{'='*60}")
     print(f"Music Only - Project: {video_project_id}")

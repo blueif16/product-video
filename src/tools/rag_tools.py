@@ -26,7 +26,7 @@ def query_execution_patterns(
 
     Args:
         query: Natural language query (e.g., "kinetic energy staggered text reveals")
-        match_count: Number of patterns to retrieve (default 3, max 5)
+        match_count: Number of patterns to retrieve (default 3, max 10)
 
     Returns:
         Formatted patterns with execution guidance
@@ -35,7 +35,7 @@ def query_execution_patterns(
         print(f"   🔍 Querying knowledge base: {query[:60]}...")
 
         rag = RAGStore(namespace="remotion_execution_patterns")
-        results = rag.search(query, top_k=min(match_count, 5))
+        results = rag.search(query, top_k=min(match_count, 10))
 
         if not results:
             print(f"   ⚠️  No patterns found for query")
@@ -69,7 +69,7 @@ def query_video_planning_patterns(
 
     Args:
         query: Natural language query (e.g., "hook body cta structure for product demo")
-        match_count: Number of patterns to retrieve (default 3, max 5)
+        match_count: Number of patterns to retrieve (default 3, max 10)
 
     Returns:
         Formatted patterns with planning guidance
@@ -78,7 +78,7 @@ def query_video_planning_patterns(
         print(f"   🔍 Querying planning knowledge base: {query[:60]}...")
 
         rag = RAGStore(namespace="video_planning_patterns")
-        results = rag.search(query, top_k=min(match_count, 5))
+        results = rag.search(query, top_k=min(match_count, 10))
 
         if not results:
             print(f"   ⚠️  No planning patterns found for query")

@@ -18,7 +18,7 @@ import tempfile
 import os
 
 from ag_ui.core import RunAgentInput
-from .adapter import run_pipeline_stream, SSE_CONTENT_TYPE, get_capture_tasks_for_project
+from src.backend.adapter import run_pipeline_stream, SSE_CONTENT_TYPE, get_capture_tasks_for_project
 
 
 app = FastAPI(
@@ -85,7 +85,7 @@ async def pipeline_endpoint(input_data: RunAgentInput):
 @app.get("/projects/{project_id}")
 async def get_project(project_id: str):
     """Get project details."""
-    from db.supabase_client import get_supabase
+    from src.db.supabase_client import get_supabase
 
     supabase = get_supabase()
     result = supabase.table("video_projects") \
@@ -124,7 +124,7 @@ async def create_project_from_uploads(request: UploadProjectRequest):
 
     Returns project_id to use with editor-only mode.
     """
-    from db.supabase_client import get_supabase
+    from src.db.supabase_client import get_supabase
 
     supabase = get_supabase()
     
@@ -168,8 +168,8 @@ async def upload_file(
     Analyzes the image content using Gemini Vision to extract detailed descriptions.
     User's description is passed as context to guide the AI analysis.
     """
-    from tools.storage import upload_asset
-    from tools.image_analyzer import analyze_image
+    from src.tools.storage import upload_asset
+    from src.tools.image_analyzer import analyze_image
 
     # Save to temp file
     suffix = os.path.splitext(file.filename or ".png")[1]
@@ -235,8 +235,8 @@ async def upload_batch(
         descriptions: JSON string of user notes, e.g. '["Dashboard", "Settings", ""]'
     """
     import json
-    from tools.storage import upload_asset
-    from tools.image_analyzer import analyze_image_batch
+    from src.tools.storage import upload_asset
+    from src.tools.image_analyzer import analyze_image_batch
     
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")

@@ -7,7 +7,7 @@ Cloud-First Architecture:
     3. Local asset_path is kept for fallback/debugging
 
 Usage:
-    from tools.storage import upload_asset, upload_and_update_task
+    from src.tools.storage import upload_asset, upload_and_update_task
     
     # Simple upload
     url = upload_asset("/tmp/screenshot.png", project_id="abc-123")
@@ -26,7 +26,7 @@ from typing import Optional
 import mimetypes
 
 from supabase import create_client, Client
-from config import Config
+from src.config import Config
 
 
 def get_storage_client() -> Client:
@@ -120,7 +120,7 @@ def upload_and_update_task(
         - Uploads file to Supabase Storage
         - Updates capture_tasks.asset_url in database
     """
-    from db.supabase_client import get_client  # Fixed import
+    from src.db.supabase_client import get_client  # Fixed import
     
     # Determine subfolder based on type
     subfolder = "recordings" if capture_type == "recording" else "screenshots"
@@ -154,7 +154,7 @@ def upload_generated_asset(
     Returns:
         Public URL
     """
-    from db.supabase_client import get_client
+    from src.db.supabase_client import get_client
     
     # Upload to generated subfolder
     url = upload_asset(local_path, project_id, subfolder="generated")

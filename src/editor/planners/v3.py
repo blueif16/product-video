@@ -1,8 +1,7 @@
 """
-Edit Planner Agent V2
+Edit Planner Agent V3
 
-Core principle: LLM reads analysis_summary and makes creative decisions.
-No hardcoded rules - pure LLM judgment.
+Establishes design system first, then creates clips with content-focused notes.
 """
 from typing import Annotated
 from typing_extensions import TypedDict
@@ -12,7 +11,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 
 from src.config import Config
-from src.tools.editor_tools import create_clip_task, finalize_edit_plan
+from src.tools.editor_tools import create_design_system, create_clip_task, finalize_edit_plan
 from src.tools.rag_tools import query_video_planning_patterns
 from src.tools.rag_recorder import extract_and_record_rag_queries
 
@@ -38,51 +37,6 @@ Composer decides: HOW to execute (positions, layouts, animations, spacing)
 
 ---
 
-## GLOBAL STYLE CONSTANTS
-
-Before clips, establish constants ALL clips follow:
-
-**Colors (example):**
-```
-Background: #F5F8FA (or dark: #0A0A0F)
-Accent: #7C3AED
-Headline: #111827 (light bg) or #FFFFFF (dark bg)
-Subtext: #4B5563 (light bg) or rgba(255,255,255,0.85) (dark bg)
-Label: #7C3AED
-```
-
-**Typography:**
-```
-Family: Inter
-Headline: 72-100px, weight 700-800
-Subtext: 36-48px, weight 400-500  
-Label: 20-28px, weight 600
-```
-
-**CRITICAL: Query RAG for contrast requirements if using light backgrounds. Subtext #6B7280 FAILS on light backgrounds.**
-
----
-
-## ENERGY KEYWORDS
-
-- `KINETIC_PRODUCT_HUNT` — fast, confident, staggered reveals
-- `ELEGANT_PREMIUM` — sophisticated, smooth, breathing room
-- `BOLD_STARTUP` — punchy, direct, high contrast
-
----
-
-## CLIP BRIEF FORMAT
-
-Natural paragraph per clip. Include:
-- Asset context (dimensions, dominant colors)
-- Text content (headline, subtext, label)
-- Energy keyword
-- Duration
-
-**End every clip with Colors and Typography blocks restating global specs.**
-
----
-
 ## WORKFLOW
 
 ### Step 1: Query RAG (REQUIRED)
@@ -93,23 +47,36 @@ query_video_planning_patterns(query, match_count)
 
 Query for: narrative arc, tempo, clip functions. Query until you understand the structure.
 
-### Step 2: Establish Style Constants
+### Step 2: Create Design System (REQUIRED)
 
-Synthesize: RAG suggestions + asset colors + user intent → ONE consistent palette.
+```
+create_design_system(design_system_text)
+```
+
+Establish ONE unified visual style for the entire video. Include:
+- Style and mode (e.g., "KINETIC_PRODUCT_HUNT light mode")
+- Color palette (Background, Headline, Subtext, Accent colors)
+- Typography (Family, sizes, weights for Label/Headline/Subtext)
+- Animation feel (snappy, smooth, elegant)
+- Spacing rules reference
 
 **Query RAG for contrast rules if light background. Don't guess hex codes.**
 
-### Step 3: Declare Layout Patterns
-
-State explicitly: "Horizontal splits = text-left, image-right, left-aligned"
-
-### Step 4: Create Clips
+### Step 3: Create Clips
 
 ```
 create_clip_task(asset_path, start_time_s, duration_s, composer_notes, asset_url=None)
 ```
 
-### Step 5: Finalize
+composer_notes should focus on:
+- Clip function (hook, feature_showcase, transition, cta)
+- Content strategy (what message, why it matters)
+- Asset usage (how to present the screenshot)
+- Energy/pacing for this clip
+
+**Do NOT repeat colors/typography in composer_notes - they're in design_system.**
+
+### Step 4: Finalize
 
 ```
 finalize_edit_plan(plan_summary, total_duration_s)
@@ -120,8 +87,9 @@ finalize_edit_plan(plan_summary, total_duration_s)
 ## TOOLS
 
 1. **query_video_planning_patterns** — ALWAYS query first
-2. **create_clip_task** — Create clips with composer_notes
-3. **finalize_edit_plan** — Complete plan
+2. **create_design_system** — Create unified visual style
+3. **create_clip_task** — Create clips with content-focused notes
+4. **finalize_edit_plan** — Complete plan
 """
 
 
@@ -133,18 +101,18 @@ def format_assets_for_prompt(assets: list[dict]) -> str:
             "Use typography, animated backgrounds, and rhythm.\n"
             "All clips use asset_path='none://text-only'"
         )
-    
+
     lines = []
     for i, asset in enumerate(assets, 1):
         path = asset.get("path", "unknown")
         url = asset.get("url")
         description = asset.get("description", 'No description')
-        
+
         if url:
             lines.append(f"{i}. Path: `{path}`\n   URL: `{url}`\n   {description}")
         else:
             lines.append(f"{i}. Path: `{path}`\n   {description}")
-    
+
     return "\n".join(lines)
 
 
@@ -155,10 +123,10 @@ def create_planner_agent():
         google_api_key=Config.GEMINI_API_KEY,
         temperature=0.7,
     )
-    
+
     return create_react_agent(
         model=model,
-        tools=[query_video_planning_patterns, create_clip_task, finalize_edit_plan],
+        tools=[query_video_planning_patterns, create_design_system, create_clip_task, finalize_edit_plan],
         name="edit_planner",
         state_schema=PlannerAgentState,
     )
@@ -168,28 +136,28 @@ def edit_planner_node(state: dict) -> dict:
     """Run the edit planner."""
     from ...db.supabase_client import get_client
     from langchain_core.messages import HumanMessage
-    
-    print("\n🎬 Edit Planner starting...")
-    
+
+    print("\n🎬 Edit Planner V3 starting...")
+
     video_project_id = state["video_project_id"]
     user_input = state.get("user_input", "")
     analysis_summary = state.get("analysis_summary", "")
     assets = state.get("assets", [])
-    
+
     assets_description = format_assets_for_prompt(assets)
-    
+
     if not assets:
         print("   ℹ️  Text-only mode")
     else:
         print(f"   📷 {len(assets)} assets available")
-    
+
     system_prompt = PLANNER_SYSTEM_PROMPT.format(
         user_input=user_input,
         analysis_summary=analysis_summary,
         assets_description=assets_description,
     )
 
-    full_prompt = system_prompt + "\n\nDesign the video. Query RAG first, then establish style constants and layout patterns."
+    full_prompt = system_prompt + "\n\nDesign the video. Query RAG first, then create design_system, then create clips."
 
     agent = create_planner_agent()
 
@@ -226,7 +194,7 @@ def edit_planner_node(state: dict) -> dict:
     }).eq("id", video_project_id).execute()
 
     print(f"\n✓ Plan: {len(clip_task_ids)} clips, {total_duration:.1f}s")
-    
+
     return {
         "edit_plan_summary": planner_response,
         "clip_task_ids": clip_task_ids,

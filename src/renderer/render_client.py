@@ -8,7 +8,7 @@ import os
 import json
 from typing import Optional
 from pathlib import Path
-from tools.storage import upload_asset
+from src.tools.storage import upload_asset
 
 
 # ─────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ def remotion_render_node(state: dict) -> dict:
     """
     LangGraph node: Render the video using Remotion.
     """
-    from db.supabase_client import get_client
+    from ..db.supabase_client import get_client
     
     video_spec = state.get("video_spec")
     video_project_id = state.get("video_project_id")

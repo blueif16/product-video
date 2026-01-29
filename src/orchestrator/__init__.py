@@ -9,8 +9,8 @@ Architecture:
 Each node is a separate module with its own context and tools.
 Single simulator = sequential execution.
 """
-from .graph import build_pipeline, run_pipeline
-from .session import get_session, reset_session, end_session, PipelineSession
+from src.orchestrator.graph import build_pipeline, run_pipeline
+from src.orchestrator.session import get_session, reset_session, end_session, PipelineSession
 
 __all__ = [
     "build_pipeline", 

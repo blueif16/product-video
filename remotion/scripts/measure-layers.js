@@ -1,18 +1,11 @@
 /**
- * Layer Measurement Script
+ * Layer Measurement Script (Fallback)
  * 
- * Reads layers JSON, computes bounding boxes for all layers using:
- * - Text width estimation with Inter font metrics
- * - Device frame dimension constants
- * - Image scaling calculations
+ * Estimation-based measurement. Used when measure-real.ts fails.
+ * Matches the same output format as measure-real.ts.
  * 
  * Usage:
  *   node measure-layers.js <layers-json-path>
- * 
- * Output: JSON with bounding box data for each layer
- * 
- * NOTE: This script uses estimation, not actual font rendering.
- * The Python fallback in draft_tools.py is the backup.
  */
 
 import fs from 'fs';
@@ -24,100 +17,80 @@ import fs from 'fs';
 const CANVAS_WIDTH = 1920;
 const CANVAS_HEIGHT = 1080;
 
-// Safe zone (12% margins)
 const SAFE_ZONE = {
-  left: Math.round(CANVAS_WIDTH * 0.12),    // 230
-  right: Math.round(CANVAS_WIDTH * 0.88),   // 1690
-  top: Math.round(CANVAS_HEIGHT * 0.12),    // 130
-  bottom: Math.round(CANVAS_HEIGHT * 0.88), // 950
+  left: Math.round(CANVAS_WIDTH * 0.12),
+  right: Math.round(CANVAS_WIDTH * 0.88),
+  top: Math.round(CANVAS_HEIGHT * 0.12),
+  bottom: Math.round(CANVAS_HEIGHT * 0.88),
 };
 
-// Device frame dimensions (from theme.ts)
-const DEVICE_FRAMES = {
-  iphone: {
-    width: 375,
-    height: 812,
-    defaultScale: 0.8,
-  },
-  iphonePro: {
-    width: 393,
-    height: 852,
-    defaultScale: 0.8,
-  },
-  macbook: {
-    width: 1200,
-    height: 750,
-    defaultScale: 0.6,
-  },
-  ipad: {
-    width: 820,
-    height: 1180,
-    defaultScale: 0.55,
-  },
-};
+const MIN_SPACING = 40;
 
-// Inter font metrics - calibrated character width ratios by weight
-// These are empirically derived from actual Inter font measurements
 const CHAR_WIDTH_RATIOS = {
-  400: 0.52,  // regular
-  500: 0.53,  // medium
-  600: 0.54,  // semibold
-  700: 0.55,  // bold
-  800: 0.56,  // extrabold
+  400: 0.52,
+  500: 0.53,
+  600: 0.545,
+  700: 0.555,
+  800: 0.565,
+};
+
+const DEVICE_FRAMES = {
+  iphone: { width: 375, height: 812, defaultScale: 0.8 },
+  iphonePro: { width: 393, height: 852, defaultScale: 0.8 },
+  macbook: { width: 1200, height: 750, defaultScale: 0.6 },
+  ipad: { width: 820, height: 1180, defaultScale: 0.55 },
 };
 
 // ─────────────────────────────────────────────────────────────
-// Text Measurement (estimation-based)
+// Text Measurement
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Estimate text dimensions using Inter font metrics
- */
-function measureText(content, style) {
+function measureTextBbox(layer) {
+  const content = layer.content || '';
+  const style = layer.style || {};
+  const position = layer.position || {};
+  
   const fontSize = style.fontSize || 48;
   const fontWeight = style.fontWeight || 400;
   const lineHeight = style.lineHeight || 1.2;
   const maxWidth = style.maxWidth;
+  const anchor = position.anchor || 'center';
   
-  // Get character width ratio based on font weight
-  const charWidthRatio = CHAR_WIDTH_RATIOS[fontWeight] || CHAR_WIDTH_RATIOS[400];
+  const charRatio = CHAR_WIDTH_RATIOS[fontWeight] || CHAR_WIDTH_RATIOS[400];
   
-  // Calculate base text width
-  // Add slight padding for kerning and edge characters
-  const baseWidth = content.length * fontSize * charWidthRatio;
-  const textWidth = Math.ceil(baseWidth * 1.05); // 5% safety margin
+  let textWidth = content.length * fontSize * charRatio * 1.05;
+  let textHeight = fontSize * lineHeight;
+  let lineCount = 1;
   
-  // Height estimation for single line
-  const textHeight = Math.ceil(fontSize * lineHeight);
-  
-  // Handle maxWidth constraint
-  let finalWidth = textWidth;
-  let finalHeight = textHeight;
-  
-  if (maxWidth && textWidth > maxWidth) {
-    // Text will wrap - estimate line count
-    const lineCount = Math.ceil(textWidth / maxWidth);
-    finalWidth = Math.min(textWidth, maxWidth);
-    finalHeight = textHeight * lineCount;
+  // Available width based on position
+  let availableWidth = null;
+  if (!maxWidth && position.x !== undefined) {
+    const xPercent = position.x;
+    if (anchor === 'center') {
+      const distToLeft = (xPercent - 12) / 100 * CANVAS_WIDTH;
+      const distToRight = (88 - xPercent) / 100 * CANVAS_WIDTH;
+      availableWidth = 2 * Math.min(distToLeft, distToRight);
+    } else if (anchor === 'top-left' || anchor === 'bottom-left') {
+      availableWidth = (88 - xPercent) / 100 * CANVAS_WIDTH;
+    } else if (anchor === 'top-right' || anchor === 'bottom-right') {
+      availableWidth = (xPercent - 12) / 100 * CANVAS_WIDTH;
+    }
+    if (availableWidth && availableWidth < 200) availableWidth = null;
   }
   
-  return { width: finalWidth, height: finalHeight };
-}
-
-/**
- * Calculate bounding box for text layer
- */
-function calculateTextBbox(layer) {
-  const { content, style, position, startFrame, durationFrames } = layer;
+  const effectiveMaxWidth = maxWidth || availableWidth;
   
-  const { width, height } = measureText(content, style);
-  const anchor = position?.anchor || 'center';
+  if (effectiveMaxWidth && textWidth > effectiveMaxWidth) {
+    lineCount = Math.ceil(textWidth / effectiveMaxWidth);
+    textWidth = Math.min(textWidth, effectiveMaxWidth);
+    textHeight = fontSize * lineHeight * lineCount;
+  }
   
+  // Position
   let x, y;
+  const preset = (position.preset || '').replace(/-/g, '_');
   
-  // Handle presets
-  if (position?.preset) {
-    const preset = position.preset.replace(/-/g, '_');
+  if (preset) {
     switch (preset) {
       case 'center':
         x = CANVAS_WIDTH / 2;
@@ -125,283 +98,155 @@ function calculateTextBbox(layer) {
         break;
       case 'top':
         x = CANVAS_WIDTH / 2;
-        y = SAFE_ZONE.top + height / 2;
+        y = SAFE_ZONE.top + textHeight / 2;
         break;
       case 'bottom':
         x = CANVAS_WIDTH / 2;
-        y = SAFE_ZONE.bottom - height / 2;
-        break;
-      case 'top_left':
-        x = SAFE_ZONE.left + width / 2;
-        y = SAFE_ZONE.top + height / 2;
-        break;
-      case 'top_right':
-        x = SAFE_ZONE.right - width / 2;
-        y = SAFE_ZONE.top + height / 2;
-        break;
-      case 'bottom_left':
-        x = SAFE_ZONE.left + width / 2;
-        y = SAFE_ZONE.bottom - height / 2;
-        break;
-      case 'bottom_right':
-        x = SAFE_ZONE.right - width / 2;
-        y = SAFE_ZONE.bottom - height / 2;
+        y = SAFE_ZONE.bottom - textHeight / 2;
         break;
       default:
         x = CANVAS_WIDTH / 2;
         y = CANVAS_HEIGHT / 2;
     }
   } else {
-    // Percentage coordinates
-    x = (position?.x ?? 50) / 100 * CANVAS_WIDTH;
-    y = (position?.y ?? 50) / 100 * CANVAS_HEIGHT;
+    x = (position.x ?? 50) / 100 * CANVAS_WIDTH;
+    y = (position.y ?? 50) / 100 * CANVAS_HEIGHT;
   }
   
-  // Calculate bounds based on anchor
-  let left, top, right, bottom;
-  
+  // Bounds from anchor
+  let left, top;
   switch (anchor) {
     case 'center':
-      left = x - width / 2;
-      top = y - height / 2;
+      left = x - textWidth / 2;
+      top = y - textHeight / 2;
       break;
     case 'top-left':
-      left = x;
-      top = y;
+      left = x; top = y;
       break;
     case 'top-right':
-      left = x - width;
-      top = y;
+      left = x - textWidth; top = y;
       break;
     case 'bottom-left':
-      left = x;
-      top = y - height;
+      left = x; top = y - textHeight;
       break;
     case 'bottom-right':
-      left = x - width;
-      top = y - height;
+      left = x - textWidth; top = y - textHeight;
       break;
     default:
-      left = x - width / 2;
-      top = y - height / 2;
+      left = x - textWidth / 2;
+      top = y - textHeight / 2;
   }
   
-  right = left + width;
-  bottom = top + height;
-  
   return {
-    width: Math.round(width),
-    height: Math.round(height),
-    left: Math.round(left),
-    top: Math.round(top),
-    right: Math.round(right),
-    bottom: Math.round(bottom),
-    centerX: Math.round(x),
-    centerY: Math.round(y),
+    bbox: {
+      left: Math.round(left),
+      top: Math.round(top),
+      right: Math.round(left + textWidth),
+      bottom: Math.round(top + textHeight),
+      width: Math.round(textWidth),
+      height: Math.round(textHeight),
+      centerX: Math.round(x),
+      centerY: Math.round(y),
+    },
+    lineCount,
   };
 }
 
-/**
- * Calculate bounding box for image layer
- */
-function calculateImageBbox(layer) {
-  const { position, scale, device } = layer;
+function measureImageBbox(layer) {
+  const position = layer.position || {};
+  const scale = layer.scale ?? 1.0;
+  const device = layer.device;
+  const anchor = position.anchor || 'center';
   
   let width, height;
-  
   if (device && device !== 'none' && DEVICE_FRAMES[device]) {
-    // Device frame
-    const deviceConfig = DEVICE_FRAMES[device];
-    const deviceScale = scale ?? deviceConfig.defaultScale;
-    width = deviceConfig.width * deviceScale;
-    height = deviceConfig.height * deviceScale;
+    const d = DEVICE_FRAMES[device];
+    const s = scale ?? d.defaultScale;
+    width = d.width * s;
+    height = d.height * s;
   } else {
-    // Regular image - assume fit to canvas if no scale
-    const imgScale = scale ?? 1.0;
-    // Without knowing actual image dimensions, assume 16:9 aspect ratio
-    width = CANVAS_WIDTH * imgScale;
-    height = CANVAS_HEIGHT * imgScale;
+    width = CANVAS_WIDTH * scale;
+    height = CANVAS_HEIGHT * scale;
   }
   
-  const anchor = position?.anchor || 'center';
+  const x = (position.x ?? 50) / 100 * CANVAS_WIDTH;
+  const y = (position.y ?? 50) / 100 * CANVAS_HEIGHT;
   
-  // Position
-  let x = (position?.x ?? 50) / 100 * CANVAS_WIDTH;
-  let y = (position?.y ?? 50) / 100 * CANVAS_HEIGHT;
-  
-  // Calculate bounds based on anchor
-  let left, top, right, bottom;
-  
+  let left, top;
   switch (anchor) {
     case 'center':
-      left = x - width / 2;
-      top = y - height / 2;
+      left = x - width / 2; top = y - height / 2;
       break;
     case 'top-left':
-      left = x;
-      top = y;
+      left = x; top = y;
       break;
     case 'top-right':
-      left = x - width;
-      top = y;
+      left = x - width; top = y;
       break;
     case 'bottom-left':
-      left = x;
-      top = y - height;
+      left = x; top = y - height;
       break;
     case 'bottom-right':
-      left = x - width;
-      top = y - height;
+      left = x - width; top = y - height;
       break;
     default:
-      left = x - width / 2;
-      top = y - height / 2;
+      left = x - width / 2; top = y - height / 2;
   }
   
-  right = left + width;
-  bottom = top + height;
-  
   return {
-    width: Math.round(width),
-    height: Math.round(height),
-    left: Math.round(left),
-    top: Math.round(top),
-    right: Math.round(right),
-    bottom: Math.round(bottom),
-    centerX: Math.round(x),
-    centerY: Math.round(y),
-  };
-}
-
-/**
- * Calculate bounding box for button layer
- */
-function calculateButtonBbox(layer) {
-  const width = layer.width || 200;
-  const height = layer.height || 50;
-  const x = (layer.x ?? 50) / 100 * CANVAS_WIDTH;
-  const y = (layer.y ?? 50) / 100 * CANVAS_HEIGHT;
-  
-  // Buttons are centered by default
-  const left = x - width / 2;
-  const top = y - height / 2;
-  
-  return {
-    width: Math.round(width),
-    height: Math.round(height),
     left: Math.round(left),
     top: Math.round(top),
     right: Math.round(left + width),
     bottom: Math.round(top + height),
+    width: Math.round(width),
+    height: Math.round(height),
     centerX: Math.round(x),
     centerY: Math.round(y),
   };
 }
 
-/**
- * Check if bounding box is within safe zone
- */
-function checkSafeZone(bbox) {
-  const issues = [];
-  
-  if (bbox.left < SAFE_ZONE.left) {
-    issues.push({ type: 'bleed_left', value: bbox.left, limit: SAFE_ZONE.left });
-  }
-  if (bbox.right > SAFE_ZONE.right) {
-    issues.push({ type: 'bleed_right', value: bbox.right, limit: SAFE_ZONE.right });
-  }
-  if (bbox.top < SAFE_ZONE.top) {
-    issues.push({ type: 'bleed_top', value: bbox.top, limit: SAFE_ZONE.top });
-  }
-  if (bbox.bottom > SAFE_ZONE.bottom) {
-    issues.push({ type: 'bleed_bottom', value: bbox.bottom, limit: SAFE_ZONE.bottom });
-  }
-  
-  return issues;
+// ─────────────────────────────────────────────────────────────
+// Color Utilities
+// ─────────────────────────────────────────────────────────────
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  } : null;
 }
 
-/**
- * Check for overlaps between layers
- */
-function checkOverlaps(layers, bboxes) {
-  const issues = [];
-  
-  // Only check text and button layers for overlap
-  const checkableIndices = layers
-    .map((l, i) => ({ layer: l, index: i }))
-    .filter(({ layer }) => layer.type === 'text' || layer.type === 'button')
-    .map(({ index }) => index);
-  
-  for (let i = 0; i < checkableIndices.length; i++) {
-    for (let j = i + 1; j < checkableIndices.length; j++) {
-      const idxA = checkableIndices[i];
-      const idxB = checkableIndices[j];
-      
-      const boxA = bboxes[idxA];
-      const boxB = bboxes[idxB];
-      
-      if (!boxA || !boxB) continue;
-      
-      // Check if boxes overlap
-      const overlapX = !(boxA.right < boxB.left || boxB.right < boxA.left);
-      const overlapY = !(boxA.bottom < boxB.top || boxB.bottom < boxA.top);
-      
-      if (overlapX && overlapY) {
-        // Calculate overlap amount
-        const overlapLeft = Math.max(boxA.left, boxB.left);
-        const overlapRight = Math.min(boxA.right, boxB.right);
-        const overlapTop = Math.max(boxA.top, boxB.top);
-        const overlapBottom = Math.min(boxA.bottom, boxB.bottom);
-        
-        issues.push({
-          type: 'overlap',
-          layerA: idxA,
-          layerB: idxB,
-          overlapWidth: overlapRight - overlapLeft,
-          overlapHeight: overlapBottom - overlapTop,
-        });
-      }
-    }
-  }
-  
-  return issues;
+function getLuminance(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0.5;
+  return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
 }
 
-/**
- * Check vertical spacing between stacked text layers
- */
-function checkVerticalSpacing(layers, bboxes) {
-  const issues = [];
+function getContrastRatio(l1, l2) {
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function extractBgColors(layer, textBbox) {
+  const colors = [];
+  if (layer.type !== 'background') return colors;
   
-  // Get text layers sorted by Y position
-  const textLayers = layers
-    .map((l, i) => ({ layer: l, index: i, bbox: bboxes[i] }))
-    .filter(({ layer, bbox }) => layer.type === 'text' && bbox)
-    .sort((a, b) => a.bbox.top - b.bbox.top);
-  
-  // Check spacing between consecutive text layers
-  for (let i = 0; i < textLayers.length - 1; i++) {
-    const current = textLayers[i];
-    const next = textLayers[i + 1];
-    
-    // Gap between bottom of current and top of next
-    const gap = next.bbox.top - current.bbox.bottom;
-    
-    // Minimum gap should be ~10% of text height (comfortable reading)
-    const minGap = Math.max(current.bbox.height, next.bbox.height) * 0.1;
-    
-    if (gap < minGap && gap >= 0) {
-      issues.push({
-        type: 'tight_spacing',
-        layerA: current.index,
-        layerB: next.index,
-        gap: Math.round(gap),
-        minGap: Math.round(minGap),
-      });
+  if (layer.color) colors.push(layer.color);
+  if (layer.gradient?.colors) colors.push(...layer.gradient.colors);
+  if (layer.meshPoints) {
+    for (const p of layer.meshPoints) {
+      const px = (p.x / 100) * CANVAS_WIDTH;
+      const py = (p.y / 100) * CANVAS_HEIGHT;
+      const dist = Math.sqrt(Math.pow(px - textBbox.centerX, 2) + Math.pow(py - textBbox.centerY, 2));
+      if (dist < (p.size || 200) && p.color) colors.push(p.color);
     }
   }
+  if (layer.orbColors) colors.push(...layer.orbColors);
   
-  return issues;
+  return colors;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -409,135 +254,133 @@ function checkVerticalSpacing(layers, bboxes) {
 // ─────────────────────────────────────────────────────────────
 
 function measureLayers(layers) {
-  const results = {
-    canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-    safeZone: SAFE_ZONE,
-    layers: [],
-    issues: [],
-  };
+  const layerInfos = [];
   
-  const bboxes = [];
-  
-  // Process each layer
+  // Process layers
   for (let i = 0; i < layers.length; i++) {
     const layer = layers[i];
-    let bbox = null;
-    let status = 'OK';
-    let layerIssues = [];
     
-    switch (layer.type) {
-      case 'background':
-        // Backgrounds are always OK - full canvas
-        const subtype = layer.orbs ? 'orbs' : 
-                        layer.gradient ? 'gradient' : 
-                        layer.grid ? 'grid' :
-                        layer.mesh ? 'mesh' :
-                        layer.aurora ? 'aurora' :
-                        layer.particles ? 'particles' :
-                        layer.radial ? 'radial' : 'solid';
-        results.layers.push({
-          index: i,
-          type: 'background',
-          subtype,
-          status: 'OK',
-          bbox: { left: 0, top: 0, right: CANVAS_WIDTH, bottom: CANVAS_HEIGHT, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-        });
-        bboxes.push(null);
-        continue;
-        
-      case 'text':
-        bbox = calculateTextBbox(layer);
-        layerIssues = checkSafeZone(bbox);
-        break;
-        
-      case 'image':
-      case 'generated_image':
-        bbox = calculateImageBbox(layer);
-        layerIssues = checkSafeZone(bbox);
-        break;
-        
-      case 'button':
-        bbox = calculateButtonBbox(layer);
-        layerIssues = checkSafeZone(bbox);
-        break;
-        
-      case 'connector':
-        // Connectors: check from/to points
-        const from = layer.from || { x: 0, y: 0 };
-        const to = layer.to || { x: 100, y: 100 };
-        const minX = Math.min(from.x, to.x) / 100 * CANVAS_WIDTH;
-        const maxX = Math.max(from.x, to.x) / 100 * CANVAS_WIDTH;
-        const minY = Math.min(from.y, to.y) / 100 * CANVAS_HEIGHT;
-        const maxY = Math.max(from.y, to.y) / 100 * CANVAS_HEIGHT;
-        bbox = {
-          left: Math.round(minX),
-          top: Math.round(minY),
-          right: Math.round(maxX),
-          bottom: Math.round(maxY),
-          width: Math.round(maxX - minX),
-          height: Math.round(maxY - minY),
-        };
-        results.layers.push({
-          index: i,
-          type: 'connector',
-          status: 'OK',
-          bbox,
-        });
-        bboxes.push(bbox);
-        continue;
-        
-      default:
-        bboxes.push(null);
-        results.layers.push({
-          index: i,
-          type: layer.type,
-          status: 'UNKNOWN',
-        });
-        continue;
+    if (layer.type === 'background') {
+      layerInfos.push({ index: i, type: 'background', bbox: null });
+      continue;
     }
     
-    bboxes.push(bbox);
-    
-    // Determine status
-    if (layerIssues.length > 0) {
-      status = layerIssues.some(iss => iss.type.startsWith('bleed')) ? 'BLEED' : 'WARNING';
-    }
-    
-    // Build layer result
-    const layerResult = {
-      index: i,
-      type: layer.type,
-      status,
-      bbox,
-    };
-    
-    // Add type-specific info
     if (layer.type === 'text') {
-      layerResult.content = layer.content.length > 30 ? layer.content.slice(0, 30) + '...' : layer.content;
-      layerResult.fontSize = layer.style?.fontSize;
-    } else if (layer.type === 'image' || layer.type === 'generated_image') {
-      layerResult.device = layer.device || 'none';
-      layerResult.scale = layer.scale;
+      const { bbox, lineCount } = measureTextBbox(layer);
+      layerInfos.push({
+        index: i,
+        type: 'text',
+        bbox,
+        content: (layer.content || '').slice(0, 25),
+        fontSize: layer.style?.fontSize,
+        lineCount,
+      });
+      continue;
     }
     
-    if (layerIssues.length > 0) {
-      layerResult.issues = layerIssues;
+    if (layer.type === 'image' || layer.type === 'generated_image') {
+      const bbox = measureImageBbox(layer);
+      layerInfos.push({ index: i, type: layer.type, bbox });
+      continue;
     }
     
-    results.layers.push(layerResult);
+    layerInfos.push({ index: i, type: layer.type, bbox: null });
   }
   
-  // Check overlaps and spacing
-  const overlapIssues = checkOverlaps(layers, bboxes);
-  const spacingIssues = checkVerticalSpacing(layers, bboxes);
+  // Spacing
+  const spacing = [];
+  const measurable = layerInfos
+    .filter(l => l.bbox && l.type !== 'background')
+    .sort((a, b) => a.bbox.centerY - b.bbox.centerY);
   
-  results.issues = [...overlapIssues, ...spacingIssues];
+  for (let i = 0; i < measurable.length - 1; i++) {
+    const a = measurable[i];
+    const b = measurable[i + 1];
+    spacing.push({
+      a: a.index,
+      b: b.index,
+      gap: Math.round(b.bbox.top - a.bbox.bottom),
+      direction: 'vertical',
+    });
+  }
   
-  return results;
+  // Contrast
+  const contrast = [];
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    if (layer.type !== 'text') continue;
+    
+    const info = layerInfos[i];
+    if (!info.bbox) continue;
+    
+    const textColor = layer.style?.color;
+    if (!textColor) continue;
+    
+    const bgColors = [];
+    for (let j = 0; j < i; j++) {
+      bgColors.push(...extractBgColors(layers[j], info.bbox));
+    }
+    
+    if (bgColors.length === 0) continue;
+    
+    const textLum = getLuminance(textColor);
+    const bgLums = bgColors.map(getLuminance);
+    const avgBgLum = bgLums.reduce((a, b) => a + b, 0) / bgLums.length;
+    const ratio = getContrastRatio(textLum, avgBgLum);
+    
+    contrast.push({
+      layerIndex: i,
+      textColor,
+      bgSamples: bgColors.slice(0, 3),
+      avgBgLuminance: Math.round(avgBgLum * 100) / 100,
+      textLuminance: Math.round(textLum * 100) / 100,
+      ratio: Math.round(ratio * 10) / 10,
+      readable: ratio >= 4.5,
+    });
+  }
+  
+  // Issues
+  const issues = [];
+  
+  for (const sp of spacing) {
+    if (sp.gap < 0) {
+      issues.push(`❌ [${sp.a}]↔[${sp.b}] OVERLAP by ${Math.abs(sp.gap)}px`);
+    } else if (sp.gap < MIN_SPACING) {
+      issues.push(`⚠️ [${sp.a}]↔[${sp.b}] gap ${sp.gap}px (min ${MIN_SPACING}px)`);
+    }
+  }
+  
+  for (const c of contrast) {
+    if (!c.readable) {
+      const bg = c.bgSamples[0] || '?';
+      issues.push(`❌ [${c.layerIndex}] contrast ${c.ratio} (need 4.5) — ${c.textColor} on ${bg}`);
+    }
+  }
+  
+  for (const info of layerInfos) {
+    if (!info.bbox || info.type === 'background') continue;
+    const b = info.bbox;
+    
+    if (b.left < SAFE_ZONE.left) issues.push(`⚠️ [${info.index}] bleeds left`);
+    if (b.right > SAFE_ZONE.right) issues.push(`⚠️ [${info.index}] bleeds right`);
+    if (b.top < SAFE_ZONE.top) issues.push(`⚠️ [${info.index}] bleeds top`);
+    if (b.bottom > SAFE_ZONE.bottom) issues.push(`⚠️ [${info.index}] bleeds bottom`);
+  }
+  
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    if (layer.type !== 'text') continue;
+    const info = layerInfos[i];
+    if (info.lineCount > 1 && !layer.style?.maxWidth) {
+      issues.push(`⚠️ [${i}] wraps to ${info.lineCount} lines (no maxWidth)`);
+    }
+  }
+  
+  return { layers: layerInfos, spacing, contrast, issues };
 }
 
 // ─────────────────────────────────────────────────────────────
-// CLI Entry Point
+// CLI
 // ─────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
@@ -546,14 +389,12 @@ if (args.length < 1) {
   process.exit(1);
 }
 
-const inputPath = args[0];
-
 try {
-  const content = fs.readFileSync(inputPath, 'utf-8');
+  const content = fs.readFileSync(args[0], 'utf-8');
   const layers = JSON.parse(content);
   
   if (!Array.isArray(layers)) {
-    throw new Error('Input must be a JSON array of layers');
+    throw new Error('Input must be a JSON array');
   }
   
   const results = measureLayers(layers);

@@ -1,4 +1,4 @@
-from .supabase_client import (
+from src.db.supabase_client import (
     # Tasks
     create_task,
     get_task,

@@ -474,7 +474,7 @@ def analyze_timeline_for_music(video_project_id: str) -> dict:
             "energy_curve": str,
         }
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     
     client = get_client()
     

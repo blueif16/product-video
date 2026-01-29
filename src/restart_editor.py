@@ -4,8 +4,8 @@ Restart Editor Script
 
 Runs the V2 editor with proper cleanup.
 """
-from db.supabase_client import get_client
-from editor import run_editor_standalone
+from src.db.supabase_client import get_client
+from src.editor import run_editor_standalone
 
 # Replace with your actual project ID
 PROJECT_ID = "09985d31-ece3-4528-9254-196959060070"

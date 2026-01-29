@@ -12,14 +12,14 @@ from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 
-from .state import UnifiedPipelineState, create_initial_state
+from src.pipeline.state import UnifiedPipelineState, create_initial_state
 
 # Import capture nodes
-from orchestrator.intake import intake_node
-from orchestrator.analyzer import analyze_and_plan_node
-from orchestrator.capturer import capture_single_task_node
-from orchestrator.aggregate import aggregate_node
-from orchestrator.graph import (
+from src.orchestrator.intake import intake_node
+from src.orchestrator.analyzer import analyze_and_plan_node
+from src.orchestrator.capturer import capture_single_task_node
+from src.orchestrator.aggregate import aggregate_node
+from src.orchestrator.graph import (
     prepare_capture_queue,
     route_after_capture,
     move_to_next_task,
@@ -28,20 +28,20 @@ from orchestrator.graph import (
 )
 
 # Import editor nodes
-from editor.planners import edit_planner_node
-from editor.composers import compose_all_clips_node
-from editor.core.assembler import edit_assembler_node
+from src.editor.planners import edit_planner_node
+from src.editor.composers import compose_all_clips_node
+from src.editor.core.assembler import edit_assembler_node
 
 # Import render/music nodes (conditional)
 try:
-    from renderer.render_client import remotion_render_node
+    from src.renderer.render_client import remotion_render_node
     HAS_RENDERER = True
 except ImportError:
     HAS_RENDERER = False
 
 try:
-    from editor.core.music_planner import music_planner_node
-    from tools.music_generator import music_generator_node, mux_audio_video_node
+    from src.editor.core.music_planner import music_planner_node
+    from src.tools.music_generator import music_generator_node, mux_audio_video_node
     HAS_MUSIC = True
 except ImportError:
     HAS_MUSIC = False
@@ -78,8 +78,8 @@ def load_assets_node(state: UnifiedPipelineState) -> dict:
     - pipeline_mode is "editor_only" or "upload"
     - After capture phase completes (aggregated)
     """
-    from editor.core.loader import load_editor_state
-    
+    from src.editor.core.loader import load_editor_state
+
     project_id = state["video_project_id"]
     
     if not project_id:

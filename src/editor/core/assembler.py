@@ -32,7 +32,7 @@ def copy_asset_to_remotion(src_path: str, video_project_id: str) -> str:
     Returns:
         URL (unchanged) or relative path for Remotion
     """
-    from tools.storage import is_remote_url
+    from src.tools.storage import is_remote_url
     
     # Cloud URLs pass through directly - Remotion handles them
     if is_remote_url(src_path):
@@ -65,7 +65,7 @@ def process_layer_assets(layer: dict, video_project_id: str) -> dict:
     
     Cloud URLs pass through. Local files are copied to public/assets.
     """
-    from tools.storage import is_remote_url
+    from src.tools.storage import is_remote_url
     
     layer = layer.copy()  # Don't modify original
     
@@ -106,8 +106,8 @@ def assemble_video_spec(
     Returns:
         Complete VideoSpec dict ready for Remotion
     """
-    from db.supabase_client import get_client
-    from tools.editor_tools import get_composed_clip_specs
+    from ...db.supabase_client import get_client
+    from src.tools.editor_tools import get_composed_clip_specs
     
     client = get_client()
     
@@ -150,12 +150,16 @@ def assemble_video_spec(
             "layers": processed_layers,
             "composerNotes": spec.get("composerNotes", ""),
         }
-        
+
         # Add transitions if present
         if spec.get("enterTransition"):
             clip["enterTransition"] = spec["enterTransition"]
         if spec.get("exitTransition"):
             clip["exitTransition"] = spec["exitTransition"]
+
+        # Add validation metadata if present
+        if spec.get("validationMetadata"):
+            clip["validationMetadata"] = spec["validationMetadata"]
         
         clips.append(clip)
     
@@ -268,7 +272,7 @@ def save_video_spec_to_db(
     Returns:
         The video_spec_id
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     
     client = get_client()
     
@@ -306,17 +310,34 @@ def save_video_spec_to_file(spec: dict, output_path: str, video_project_id: str 
     Returns:
         The file path
     """
-    # 合并 RAG metadata
+    # 合并 RAG 查询和验证元数据到每个 clip
     if video_project_id:
-        from tools.rag_recorder import rag_recorder
-        rag_metadata = rag_recorder.get_metadata(video_project_id)
+        from src.tools.rag_recorder import rag_recorder
 
-        if "metadata" not in spec:
-            spec["metadata"] = {}
-        spec["metadata"]["rag"] = rag_metadata
+        # 为每个 clip 附加其 RAG 查询和验证元数据
+        for clip in spec.get("clips", []):
+            clip_id = clip["id"]
+            clip["rag_queries"] = rag_recorder.get_queries_for_clip(
+                video_project_id, clip_id
+            )
+
+            # 添加验证元数据（如果存在）
+            validation_meta = rag_recorder.get_validation_metadata(clip_id)
+            if validation_meta["total_validations"] > 0:
+                clip["validationMetadata"] = validation_meta
+
+        # planning_phase 的查询放在 meta 中
+        planning_queries = rag_recorder.get_queries_for_clip(
+            video_project_id, "planning_phase"
+        )
+        if planning_queries:
+            spec["meta"]["planning_rag_queries"] = planning_queries
 
         # 清除缓存
         rag_recorder.clear(video_project_id)
+        # 清除所有 clip 的验证历史
+        for clip in spec.get("clips", []):
+            rag_recorder.clear_validations(clip["id"])
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(spec, f, indent=2, ensure_ascii=False)
@@ -358,7 +379,7 @@ def edit_assembler_node(state: dict) -> dict:
     """
     LangGraph node: Assemble the final VideoSpec.
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     import os
     
     print("\n📦 Assembling video spec...")

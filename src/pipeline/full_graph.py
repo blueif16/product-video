@@ -82,7 +82,7 @@ def capture_to_editor_bridge(state: FullPipelineState) -> dict:
     The capture phase writes to video_projects + capture_tasks,
     and this node reads those tables to populate editor state.
     """
-    from editor.core.loader import load_editor_state
+    from src.editor.core.loader import load_editor_state
     
     video_project_id = state.get("video_project_id")
     
@@ -147,8 +147,8 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
         include_render: Whether to include the Remotion render step
         include_music: Whether to include music generation (requires render)
     """
-    from orchestrator.graph import build_pipeline as build_capture_graph
-    from editor.graph import build_editor_graph
+    from src.orchestrator.graph import build_pipeline as build_capture_graph
+    from src.editor.graph import build_editor_graph
     
     # If no render, no music either
     if not include_render:
@@ -163,19 +163,19 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
     # ─────────────────────────────────────────────────────────
     # Import capture phase nodes
     # ─────────────────────────────────────────────────────────
-    from orchestrator.intake import intake_node
-    from orchestrator.analyzer import analyze_and_plan_node
-    from orchestrator.capturer import capture_single_task_node
-    from orchestrator.aggregate import aggregate_node
-    from orchestrator.graph import prepare_capture_queue, route_next_capture
+    from src.orchestrator.intake import intake_node
+    from src.orchestrator.analyzer import analyze_and_plan_node
+    from src.orchestrator.capturer import capture_single_task_node
+    from src.orchestrator.aggregate import aggregate_node
+    from src.orchestrator.graph import prepare_capture_queue, route_next_capture
     
     # ─────────────────────────────────────────────────────────
     # Import editor phase nodes
     # ─────────────────────────────────────────────────────────
-    from editor.planners import edit_planner_node
-    from editor.composers import compose_all_clips_node
-    from editor.core.assembler import edit_assembler_node
-    from editor.graph import should_render, should_generate_music
+    from src.editor.planners import edit_planner_node
+    from src.editor.composers import compose_all_clips_node
+    from src.editor.core.assembler import edit_assembler_node
+    from src.editor.graph import should_render, should_generate_music
     
     # ─────────────────────────────────────────────────────────
     # Add Capture Phase Nodes
@@ -199,15 +199,15 @@ def build_full_pipeline(include_render: bool = True, include_music: bool = True)
     builder.add_node("assemble", edit_assembler_node)
     
     if include_render:
-        from renderer.render_client import remotion_render_node
+        from src.renderer.render_client import remotion_render_node
         builder.add_node("render", remotion_render_node)
     
     # ─────────────────────────────────────────────────────────
     # Add Music Phase Nodes (runs AFTER render)
     # ─────────────────────────────────────────────────────────
     if include_music:
-        from editor.core.music_planner import music_planner_node
-        from tools.music_generator import music_generator_node, mux_audio_video_node
+        from src.editor.core.music_planner import music_planner_node
+        from ..tools.music_generator import music_generator_node, mux_audio_video_node
         
         builder.add_node("music_plan", music_planner_node)
         builder.add_node("music_generate", music_generator_node)
@@ -302,7 +302,7 @@ def run_full_pipeline(
     Returns:
         Final pipeline state
     """
-    from orchestrator.session import reset_session
+    from src.orchestrator.session import reset_session
     
     print("\n" + "="*60)
     print("StreamLine Full Pipeline")

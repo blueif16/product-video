@@ -11,15 +11,15 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 from langgraph.checkpoint.memory import InMemorySaver
 
-from config import Config
-from db.supabase_client import get_pending_tasks, update_video_project_status
+from src.config import Config
+from src.db.supabase_client import get_pending_tasks, update_video_project_status
 
-from .state import PipelineState
-from .intake import intake_node
-from .analyzer import analyze_and_plan_node
-from .capturer import capture_single_task_node
-from .aggregate import aggregate_node
-from .session import get_session
+from src.orchestrator.state import PipelineState
+from src.orchestrator.intake import intake_node
+from src.orchestrator.analyzer import analyze_and_plan_node
+from src.orchestrator.capturer import capture_single_task_node
+from src.orchestrator.aggregate import aggregate_node
+from src.orchestrator.session import get_session
 
 
 # ─────────────────────────────────────────────────────────────

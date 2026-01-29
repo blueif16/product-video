@@ -21,7 +21,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
-from config import Config
+from src.config import Config
 
 
 # Suppress MallocStackLogging warnings from child processes
@@ -139,7 +139,7 @@ def _check_navigation_budget(action_name: str, action_detail: str = "") -> Optio
         None if OK to proceed, or error string if limit exceeded.
     """
     # Import here to avoid circular dependency
-    from tools.hitl_tools import get_exploration_state
+    from src.tools.hitl_tools import get_exploration_state
     
     state = get_exploration_state()
     
@@ -1110,7 +1110,7 @@ def describe_screen() -> str:
         JSON with UI elements, or error message if idb not available
     """
     # Import here to avoid circular dependency
-    from tools.hitl_tools import get_exploration_state
+    from src.tools.hitl_tools import get_exploration_state
     
     # Check exploration budget BEFORE executing
     state = get_exploration_state()

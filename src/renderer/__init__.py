@@ -19,7 +19,7 @@ success, output_path, error = render_video(
 ```
 """
 
-from .render_client import (
+from src.renderer.render_client import (
     render_video,
     render_still,
     check_remotion_available,

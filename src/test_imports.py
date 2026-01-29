@@ -41,7 +41,7 @@ def test_imports():
     
     # Test capture_tools directly
     print("  ✓ tools/capture_tools")
-    from tools.capture_tools import (
+    from src.tools.capture_tools import (
         set_status_bar,
         clear_status_bar,
         set_appearance,
@@ -68,18 +68,18 @@ def test_imports():
     
     # Test validation_tool
     print("  ✓ tools/validation_tool")
-    from tools.validation_tool import validate_capture, get_recording_action_log
+    from src.tools.validation_tool import validate_capture, get_recording_action_log
     
     # Test bash_tools
     print("  ✓ tools/bash_tools")
-    from tools.bash_tools import run_bash, read_file, write_file, list_directory
+    from src.tools.bash_tools import run_bash, read_file, write_file, list_directory
     
     # Test agents
     print("  ✓ agents/capturer_agent")
-    from agents.capturer_agent import create_capturer_agent
+    from src.agents.capturer_agent import create_capturer_agent
     
     print("  ✓ agents/analyzer_agent")
-    from agents.analyzer_agent import create_analyzer_agent
+    from src.agents.analyzer_agent import create_analyzer_agent
     
     print("\n" + "=" * 50)
     print("All imports successful!")

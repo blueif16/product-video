@@ -21,9 +21,9 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 from langgraph.types import Command
 
-from pipeline.unified_graph import compile_unified_graph
-from pipeline.state import create_initial_state
-from .event_translator import EventTranslator, extract_ui_state, make_json_safe
+from src.pipeline.unified_graph import compile_unified_graph
+from src.pipeline.state import create_initial_state
+from src.backend.event_translator import EventTranslator, extract_ui_state, make_json_safe
 
 
 SSE_CONTENT_TYPE = "text/event-stream"
@@ -37,7 +37,7 @@ def get_capture_tasks_for_project(project_id: str) -> list[dict]:
         return []
 
     try:
-        from db.supabase_client import get_supabase
+        from src.db.supabase_client import get_supabase
 
         supabase = get_supabase()
         result = supabase.table("capture_tasks") \

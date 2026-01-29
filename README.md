@@ -88,6 +88,31 @@ npm run dev
 
 ---
 
+## V3 Updates
+
+### Design System Separation
+Planner 现在调用 `create_design_system()` **一次性**创建统一的视觉规范（颜色、字体、动效风格），存储在 `video_projects.design_system_text`。每个 clip 的 `composer_notes` 只需关注内容策略，不再重复样式定义。
+
+### Real Pixel Validation
+新增 `measure-real.ts` 脚本，计算真实的文本边界框、间距矩阵和对比度，替代字符计数估算。验证输出格式简洁：
+
+```
+LAYOUT:
+  [2] text  380×52 @ (450, 320)  'Transform...' 64px
+  [3] text  280×36 @ (450, 400)  'AI-powered...' 24px ⚠️2lines
+
+SPACING:
+  [2]↔[3]: 28px ⚠️ min 40px
+
+ISSUES:
+  ⚠️ [2]↔[3] gap 28px (min 40px)
+  ❌ [3] contrast 1.8 (need 4.5)
+```
+
+详见 [docs/V3_README.md](docs/V3_README.md)
+
+---
+
 ## Architecture
 
 ### Core Principle: Pure LLM Judgment, Zero Parsing

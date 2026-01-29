@@ -4,7 +4,7 @@ Gemini 3 Pro Image Generation
 Wraps the Gemini image generation API for creating enhanced visuals.
 
 Usage:
-    from tools.image_gen import generate_image, generate_image_with_reference
+    from src.tools.image_gen import generate_image, generate_image_with_reference
     
     # Simple generation
     path = generate_image("A glowing dashboard UI", aspect_ratio="16:9")
@@ -26,7 +26,7 @@ from PIL import Image
 from google import genai
 from google.genai import types
 
-from config import Config
+from src.config import Config
 
 
 # ─────────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ def generate_enhanced_screenshot(
             "cloud_url": "https://xxx.supabase.co/storage/..."
         }
     """
-    from tools.storage import upload_asset
+    from src.tools.storage import upload_asset
     
     # Generate the image
     if source_path and os.path.exists(source_path):

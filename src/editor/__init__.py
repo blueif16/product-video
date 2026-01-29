@@ -28,7 +28,7 @@ run_assembly_only("video-project-uuid")
 ```
 """
 
-from .graph import (
+from src.editor.graph import (
     build_editor_graph,
     run_editor_standalone,
     run_editor_test,
@@ -38,7 +38,7 @@ from .graph import (
     run_music_only,
 )
 
-from .core.state import (
+from src.editor.core.state import (
     EditorState,
     ClipSpec,
     VideoSpec,
@@ -55,9 +55,9 @@ from .core.state import (
     TransitionSpec,
 )
 
-from .core.loader import load_editor_state, create_test_state, load_or_create_state
+from src.editor.core.loader import load_editor_state, create_test_state, load_or_create_state
 
-from .core.music_planner import (
+from src.editor.core.music_planner import (
     analyze_timeline_for_music,
     extract_hit_points,
     HitPoint,
@@ -65,8 +65,8 @@ from .core.music_planner import (
     EnergyLevel,
 )
 
-from .planners import VERSION as PLANNER_VERSION
-from .composers import VERSION as COMPOSER_VERSION
+from src.editor.planners import VERSION as PLANNER_VERSION
+from src.editor.composers import VERSION as COMPOSER_VERSION
 
 __all__ = [
     # Graph builders & runners

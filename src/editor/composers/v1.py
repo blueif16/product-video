@@ -26,8 +26,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 
-from config import Config
-from tools.editor_tools import submit_clip_spec, generate_enhanced_image
+from src.config import Config
+from src.tools.editor_tools import submit_clip_spec, generate_enhanced_image
 
 
 # ─────────────────────────────────────────────────────────────
@@ -370,7 +370,7 @@ def clip_composer_node(state: dict) -> dict:
     LangGraph node: Process the next pending clip task.
     Sequential execution for easier debugging.
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     from langchain_core.messages import HumanMessage
     
     video_project_id = state["video_project_id"]
@@ -424,9 +424,9 @@ def clip_composer_node(state: dict) -> dict:
 
 def compose_all_clips_node(state: dict) -> dict:
     """Process all clips in one node (batch processing)."""
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     from langchain_core.messages import HumanMessage
-    from tools.editor_tools import get_pending_clip_tasks
+    from src.tools.editor_tools import get_pending_clip_tasks
     
     video_project_id = state["video_project_id"]
     tasks = get_pending_clip_tasks(video_project_id)

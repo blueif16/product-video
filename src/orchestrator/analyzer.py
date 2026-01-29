@@ -15,11 +15,11 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 
-from config import get_model
-from tools import ANALYZER_TOOLS
-from db.supabase_client import create_task, create_video_project, get_supabase
-from .state import PipelineState, AppManifest
-from .session import get_session
+from src.config import get_model
+from src.tools import ANALYZER_TOOLS
+from src.db.supabase_client import create_task, create_video_project, get_supabase
+from src.orchestrator.state import PipelineState, AppManifest
+from src.orchestrator.session import get_session
 
 
 # ─────────────────────────────────────────────────────────────

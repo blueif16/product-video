@@ -14,11 +14,15 @@ import uuid
 import json
 from pathlib import Path
 
-from config import Config
-from db.supabase_client import get_client
-from editor.composers.v2 import compose_single_clip_node
-from editor.core.assembler import edit_assembler_node
-from renderer.render_client import render_video
+# Add parent to path
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.config import Config
+from src.db.supabase_client import get_client
+from src.editor.composers.v2 import compose_single_clip_node
+from src.editor.core.assembler import edit_assembler_node
+from src.renderer.render_client import render_video
 
 
 def create_test_clip_task():
@@ -53,28 +57,8 @@ def create_test_clip_task():
         "status": "completed",
     }).execute()
     
-    # PLANNER'S PRODUCTION NOTE
-    # Style constants (colors, fonts) + Energy + Timing ONLY
-    # NO technique instructions (orbs/shapes/etc = composer's creative choice)
-    # PLANNER'S PRODUCTION NOTE
-    composer_notes = """Fashion collection hero.
-
-Asset:
-- 1170×2532 portrait, clothing grid, white/neutral dominant
-- Editorial fashion layout, structured arrangement
-
-Text Content:
-This clip introduces the Collection 24 line with the anchor statement "STYLE REFINED" and supporting message "Curated for the modern wardrobe". The collection highlights three key features: timeless silhouettes, sustainable fabrics, and limited edition pieces. Include the value hook that orders over $150 get free shipping. Close with a call to action "Explore the Edit" and the brand destination vaulteclothing.com.
-
-Style Ranges:
-- BG: Dark tones (#0d0d0d to #2a2a2a) or warm neutrals (#f5f0e8 to #ffffff)
-- Text: Cream (#faf5ef), or dark (#1a1a1a) if light BG
-- Type: Inter, weights 300-600, sizes 16-96px
-
-Energy: elegant, premium, sophisticated, fashion, smooth, confident, refined, polished, high-end
-
-Duration: 8.0s (240 frames @ 30fps)
-"""
+    # EXACT composerNotes from clip 1 in the problematic video log
+    composer_notes = """Layout Type C with centered text stack. Headline uses a kinetic word-stagger reveal. Subtext follows with a snappy slide-up. Background features subtle accent blue orbs positioned in corners to maintain high text contrast and legibility. Vertical spacing between headline and subtext is calculated at ~11% to ensure clear hierarchy without crowding."""
     
     clip_result = client.table("clip_tasks").insert({
         "video_project_id": project_id,

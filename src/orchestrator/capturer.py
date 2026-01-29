@@ -12,11 +12,11 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
-from config import get_model, Config
-from tools import CAPTURER_TOOLS, INTERACTION_BACKEND, reset_exploration_state, get_exploration_state
-from db.supabase_client import get_task, update_task_status
-from .state import PipelineState, AppManifest
-from .session import get_session
+from src.config import get_model, Config
+from src.tools import CAPTURER_TOOLS, INTERACTION_BACKEND, reset_exploration_state, get_exploration_state
+from src.db.supabase_client import get_task, update_task_status
+from src.orchestrator.state import PipelineState, AppManifest
+from src.orchestrator.session import get_session
 
 
 # ─────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ def create_result_tool(task_id: str, video_project_id: str):
         asset_url = None
         if success:
             try:
-                from tools.storage import upload_asset
+                from src.tools.storage import upload_asset
                 
                 # Determine capture type from file extension
                 capture_type = "recording" if asset_path.endswith('.mp4') else "screenshot"

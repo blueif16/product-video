@@ -7,14 +7,14 @@ Provides a single LangGraph that supports:
 - Upload mode: from uploaded files → editor → render → music
 """
 
-from .unified_graph import (
+from src.pipeline.unified_graph import (
     compile_unified_graph,
     run_unified_pipeline,
     build_unified_graph,
     print_graph_structure,
 )
 
-from .state import (
+from src.pipeline.state import (
     UnifiedPipelineState,
     create_initial_state,
 )

@@ -8,10 +8,10 @@ import shutil
 import re
 from pathlib import Path
 
-from config import Config, get_model
-from db.supabase_client import get_supabase, update_video_project_status
-from .state import PipelineState
-from .session import get_session
+from src.config import Config, get_model
+from src.db.supabase_client import get_supabase, update_video_project_status
+from src.orchestrator.state import PipelineState
+from src.orchestrator.session import get_session
 
 
 def extract_visual_design_from_notes(validation_notes: list[str]) -> str:

@@ -39,10 +39,8 @@ lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 
 # Start backend
 echo "🔧 Starting backend..."
-cd src
-python -m uvicorn backend.server:app --reload --port 8000 2>&1 | sed 's/^/[BACKEND] /' &
+python -m uvicorn src.backend.server:app --reload --port 8000 2>&1 | sed 's/^/[BACKEND] /' &
 BACKEND_PID=$!
-cd ..
 
 # Wait for backend
 for i in {1..30}; do

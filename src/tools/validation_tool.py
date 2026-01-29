@@ -12,7 +12,7 @@ import base64
 import json
 import os
 from pathlib import Path
-from config import get_model
+from src.config import get_model
 
 
 # Suppress MallocStackLogging warnings from child processes (FFmpeg, ffprobe)

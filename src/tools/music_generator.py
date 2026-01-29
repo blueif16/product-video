@@ -17,7 +17,7 @@ import subprocess
 import re
 
 from elevenlabs.client import ElevenLabs
-from config import Config
+from src.config import Config
 
 
 def _camel_to_snake(name: str) -> str:
@@ -147,7 +147,7 @@ class MusicGenerator:
         2. Uses the composition plan for precise alignment
         3. Returns the generated audio path
         """
-        from editor.core.music_planner import analyze_timeline_for_music
+        from src.editor.core.music_planner import analyze_timeline_for_music
         
         # Analyze the video timeline
         analysis = analyze_timeline_for_music(video_project_id)
@@ -506,7 +506,7 @@ def mux_audio_video_node(state: dict) -> dict:
         final_path = output_path
         if video_project_id and is_url:
             try:
-                from db.supabase_client import get_supabase
+                from src.db.supabase_client import get_supabase
                 print(f"   📤 Uploading final video to cloud...")
 
                 supabase = get_supabase()
@@ -594,7 +594,7 @@ def generate_music_for_project(
 
     This is the main function to call from outside the module.
     """
-    from editor.core.music_planner import analyze_timeline_for_music, print_music_analysis
+    from src.editor.core.music_planner import analyze_timeline_for_music, print_music_analysis
     
     # Analyze
     print("\n🎵 Analyzing video timeline...")

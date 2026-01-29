@@ -27,6 +27,45 @@ import uuid
 # ─────────────────────────────────────────────────────────────
 
 @tool
+def create_design_system(
+    design_system_text: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """
+    Create design system for the video. Call this ONCE after analyzing assets.
+
+    This establishes the unified visual style (colors, typography, animation feel)
+    that all clips will follow.
+
+    Args:
+        design_system_text: Full design system description including:
+                           - Style and mode (e.g., KINETIC_PRODUCT_HUNT light mode)
+                           - Color palette (Background, Headline, Subtext, Accents)
+                           - Typography rules (Family, sizes, weights)
+                           - Animation feel (snappy, smooth, elegant)
+                           - Spacing rules reference
+                           Format similar to composer_notes - natural paragraph.
+
+    Returns:
+        Confirmation message
+    """
+    from src.db.supabase_client import get_client
+
+    video_project_id = state.get("video_project_id")
+    if not video_project_id:
+        return "ERROR: No video_project_id in state"
+
+    client = get_client()
+
+    client.table("video_projects").update({
+        "design_system_text": design_system_text
+    }).eq("id", video_project_id).execute()
+
+    print(f"   🎨 Design system created")
+    return f"Design system created for project {video_project_id}"
+
+
+@tool
 def create_clip_task(
     asset_path: str,
     start_time_s: float,
@@ -36,31 +75,29 @@ def create_clip_task(
     asset_url: Optional[str] = None,
 ) -> str:
     """
-    Create a clip task - a "moment" in the video timeline.
-    
-    This is your creative unit. Put ALL your vision in composer_notes:
-    - What feeling/energy should this moment have?
-    - Should the original asset be enhanced with AI generation?
-    - What text, important info is needed to be passed and rendered out in this clip
-
-    The composer will interpret your notes and decide what layers to create:
-    - Background layers (for solid colors, gradients, animated orbs)
-    - Image layers (original screenshots OR AI-generated images)
-    - Text layers (typography, callouts)
+    Create a clip task — a single moment in the video timeline.
     
     Args:
-        asset_path: Path to the main screenshot/recording
-                   Use "none://text-only" for text-only clips
-        start_time_s: When this moment starts in the video (seconds)
-        duration_s: How long this moment lasts (seconds)
-        composer_notes: Your FULL creative vision for this moment
-        asset_url: Cloud URL for the asset (preferred over asset_path)
+        asset_path: Path to screenshot/recording. Use "none://text-only" for text-only clips.
+        start_time_s: Start time in seconds.
+        duration_s: Duration in seconds.
+        composer_notes: Full creative brief for this clip (see required format below).
+        asset_url: Cloud URL for the asset (preferred over asset_path).
+
+    composer_notes should include:
+        - Clip function (hook, feature_showcase, transition, cta)
+        - Content strategy (what message to convey)
+        - Asset context (what to show, how to present it)
+        - Energy/pacing for this specific clip
+
+    Note: Colors, typography, and layout rules come from the design_system.
+    Focus on content strategy and energy here
     
     Returns:
         Task ID
-    
     """
-    from db.supabase_client import get_client
+
+    from src.db.supabase_client import get_client
     
     # Debug: Check if state was properly injected
     video_project_id = state.get("video_project_id") if state else None
@@ -117,7 +154,7 @@ def finalize_edit_plan(
     Returns:
         Confirmation with task count
     """
-    from db.supabase_client import get_client
+    from src.db.supabase_client import get_client
     
     video_project_id = state.get("video_project_id")
     if not video_project_id:
@@ -196,9 +233,9 @@ def generate_enhanced_image(
                 Smooth transitions. Premium SaaS aesthetic. No text."
         aspect_ratio="16:9"
     """
-    from db.supabase_client import get_client
-    from tools.image_gen import generate_enhanced_screenshot
-    from tools.storage import is_remote_url
+    from src.db.supabase_client import get_client
+    from src.tools.image_gen import generate_enhanced_screenshot
+    from src.tools.storage import is_remote_url
     
     video_project_id = state.get("video_project_id") if state else None
     client = get_client()
@@ -308,8 +345,9 @@ def submit_clip_spec(
     Returns:
         Confirmation message
     """
-    from db.supabase_client import get_client
-    from tools.draft_tools import read_draft, get_draft_path
+    from src.db.supabase_client import get_client
+    from src.tools.draft_tools import read_draft, get_draft_path
+    from src.tools.rag_recorder import rag_recorder
     
     # Get clip_id from state or legacy task_id param
     clip_id = state.get("clip_id") if state else task_id
@@ -364,6 +402,11 @@ def submit_clip_spec(
     if background_color:
         clip_spec["backgroundColor"] = background_color
 
+    # Add validation metadata
+    validation_meta = rag_recorder.get_validation_metadata(clip_id)
+    if validation_meta["total_validations"] > 0:
+        clip_spec["validationMetadata"] = validation_meta
+
     # Update the task
     result = client.table("clip_tasks").update({
         "clip_spec": clip_spec,
@@ -374,13 +417,18 @@ def submit_clip_spec(
         layer_types = [l.get('type', 'unknown') for l in layers]
         layer_summary = ", ".join(layer_types)
         print(f"   ✓ Clip spec submitted: [{layer_summary}]")
-        
-        # Clean up draft file
+
+        # Clean up draft file and validation history
         draft_path = get_draft_path(clip_id)
         if draft_path.exists():
             draft_path.unlink()
-        
-        return f"Clip spec submitted for task {clip_id} with {len(layers)} layers: {layer_summary}"
+
+        rag_recorder.clear_validations(clip_id)
+
+        return (
+            f"Clip spec submitted for task {clip_id} "
+            f"with {len(layers)} layers: {layer_summary}"
+        )
     else:
         return f"ERROR: Failed to update clip task {clip_id}"
 
@@ -391,7 +439,7 @@ def submit_clip_spec(
 
 def get_pending_clip_tasks(video_project_id: str) -> list[dict]:
     """Get all pending clip tasks for a project."""
-    from db.supabase_client import get_client
+    from src.db.supabase_client import get_client
     
     client = get_client()
     result = client.table("clip_tasks").select("*").eq(
@@ -405,7 +453,7 @@ def get_pending_clip_tasks(video_project_id: str) -> list[dict]:
 
 def get_composed_clip_specs(video_project_id: str) -> list[dict]:
     """Get all composed clip specs for assembly."""
-    from db.supabase_client import get_client
+    from src.db.supabase_client import get_client
     
     client = get_client()
     result = client.table("clip_tasks").select("*").eq(
@@ -419,7 +467,7 @@ def get_composed_clip_specs(video_project_id: str) -> list[dict]:
 
 def get_generated_assets(video_project_id: str, status: str = "success") -> list[dict]:
     """Get generated assets for a project."""
-    from db.supabase_client import get_client
+    from src.db.supabase_client import get_client
     
     client = get_client()
     result = client.table("generated_assets").select("*").eq(

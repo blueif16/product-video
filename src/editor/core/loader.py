@@ -18,7 +18,7 @@ Videos with no captured assets are valid (text-only promos).
 The loader returns an empty assets list, and the planner creates text-only clips.
 """
 from typing import Optional
-from .state import EditorState
+from src.editor.core.state import EditorState
 import subprocess
 import os
 
@@ -101,7 +101,7 @@ def load_editor_state(video_project_id: str) -> EditorState:
     Raises:
         ValueError: If project not found or not ready for editing
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     
     client = get_client()
     
@@ -218,7 +218,7 @@ def create_test_state(
         "Main dashboard showing task list [1170×2532, screenshot]"
 
     Usage:
-        from editor.core.loader import create_test_state
+        from src.editor.core.loader import create_test_state
         state = create_test_state()
         # Text-only test:
         state = create_test_state(text_only=True)

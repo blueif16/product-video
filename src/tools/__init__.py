@@ -4,9 +4,9 @@ Tool exports for capture agents.
 Note: Editor tools (create_clip_task, submit_clip_spec, etc.) are imported
 directly in the editor module, not exported here.
 """
-from .bash_tools import run_bash, read_file, write_file, list_directory
+from src.tools.bash_tools import run_bash, read_file, write_file, list_directory
 
-from .capture_tools import (
+from src.tools.capture_tools import (
     # Environment setup
     set_status_bar,
     clear_status_bar,
@@ -43,9 +43,9 @@ from .capture_tools import (
     INTERACTION_BACKEND,
 )
 
-from .validation_tool import validate_capture, get_recording_action_log, verify_screen
+from src.tools.validation_tool import validate_capture, get_recording_action_log, verify_screen
 
-from .hitl_tools import (
+from src.tools.hitl_tools import (
     request_human_guidance,
     report_exploration_stuck,
     check_exploration_budget,
@@ -54,7 +54,7 @@ from .hitl_tools import (
 )
 
 # Editor tools (for reference, import directly from editor_tools.py)
-from .editor_tools import (
+from src.tools.editor_tools import (
     # Planner tools
     create_clip_task,
     finalize_edit_plan,

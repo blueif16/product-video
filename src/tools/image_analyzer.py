@@ -10,7 +10,7 @@ from PIL import Image
 from google import genai
 from google.genai import types
 
-from config import Config
+from src.config import Config
 
 
 class ImageDescription(BaseModel):
@@ -28,16 +28,18 @@ class ImageDescription(BaseModel):
 
 Format: "[Type] ([Orientation]): [Detailed description]"
 
-Types: phone screenshot, website screenshot, tablet screenshot, decorative image, product photo, icon/logo, diagram/chart
+Types: iOS app screenshot, Android app screenshot, web app screenshot, desktop app screenshot, website screenshot, tablet interface, decorative image, product photo, icon/logo, diagram/chart, UI mockup
 Orientations: portrait, landscape, square
 
-Example: "Phone screenshot (portrait): Dashboard displaying daily task completion metrics with purple accent color (#7C3AED), rounded cards layout, prominent Add Task button at bottom"
+Example: "iOS app screenshot (portrait): Task management dashboard with card-based layout (3-column grid), displaying completion metrics in rounded containers with primary purple (#7C3AED), secondary indigo (#6366F1), background light gray (#F9FAFB), featuring prominent CTA button at bottom for adding tasks, purpose: showcase app's main dashboard functionality"
 
 Include:
-- Main content and UI elements
-- Dominant colors (hex codes if identifiable)
-- Visual style and layout
-- Key interactive elements
+- Specific platform/type (iOS/Android/web/desktop)
+- Layout structure (grid, flexbox, cards, list, sidebar, etc.)
+- Primary purpose/function of the interface
+- All dominant colors with precise hex codes (#RRGGBB)
+- Key UI elements and their positions
+- Visual hierarchy and spacing patterns
 
 Format as a single flowing sentence after the type/orientation prefix.
 """
@@ -102,39 +104,43 @@ def append_dimensions_to_description(description: str, width: int, height: int) 
     return description
 
 
-SINGLE_IMAGE_PROMPT = """Analyze this image and provide a description.
+SINGLE_IMAGE_PROMPT = """Analyze this image and provide a detailed description.
 
 Your description MUST follow this exact format:
 "[Type] ([Orientation]): [Detailed content description]"
 
-Types: phone screenshot, website screenshot, tablet screenshot, decorative image, product photo, icon/logo, diagram/chart
+Types: iOS app screenshot, Android app screenshot, web app screenshot, desktop app screenshot, website screenshot, tablet interface, decorative image, product photo, icon/logo, diagram/chart, UI mockup
 Orientations: portrait, landscape, square
 
-Include in your description:
-- Main content and UI elements
-- Dominant colors (hex codes if identifiable)
-- Visual style and layout
-- Key interactive elements
+REQUIRED in your description:
+- Specific platform/type (be precise: iOS/Android/web/desktop, not just "phone")
+- Layout structure (grid layout, flexbox, card-based, list view, sidebar navigation, etc.)
+- Primary purpose/function (what is this interface for?)
+- ALL dominant colors with PRECISE hex codes (#RRGGBB format) - background, primary, secondary, accent colors
+- Key UI elements with their positions (top nav, bottom bar, centered content, etc.)
+- Visual hierarchy (what draws attention first, spacing patterns)
 
 Format as a single flowing sentence after the type/orientation prefix.
 
-Example: "Phone screenshot (portrait): Dashboard displaying daily task completion metrics with purple accent color (#7C3AED), rounded cards layout, prominent Add Task button at bottom"
+Example: "iOS app screenshot (portrait): Task management dashboard with card-based layout (3-column grid), displaying completion metrics in rounded containers with primary purple (#7C3AED), secondary indigo (#6366F1), background light gray (#F9FAFB), white cards (#FFFFFF), featuring prominent CTA button at bottom for adding tasks, purpose: showcase app's main dashboard functionality with visual hierarchy emphasizing action button"
 """
 
 
-BATCH_IMAGE_PROMPT = """Analyze these {count} images and provide descriptions.
+BATCH_IMAGE_PROMPT = """Analyze these {count} images and provide detailed descriptions.
 
 Each description MUST follow this exact format:
 "[Type] ([Orientation]): [Detailed content description]"
 
-Types: phone screenshot, website screenshot, tablet screenshot, decorative image, product photo, icon/logo, diagram/chart
+Types: iOS app screenshot, Android app screenshot, web app screenshot, desktop app screenshot, website screenshot, tablet interface, decorative image, product photo, icon/logo, diagram/chart, UI mockup
 Orientations: portrait, landscape, square
 
-For each image include:
-- Main content and UI elements
-- Dominant colors (hex codes if identifiable)
-- Visual style and layout
-- Key interactive elements
+REQUIRED for each image:
+- Specific platform/type (be precise: iOS/Android/web/desktop, not just "phone")
+- Layout structure (grid layout, flexbox, card-based, list view, sidebar navigation, etc.)
+- Primary purpose/function (what is this interface for?)
+- ALL dominant colors with PRECISE hex codes (#RRGGBB format) - background, primary, secondary, accent colors
+- Key UI elements with their positions (top nav, bottom bar, centered content, etc.)
+- Visual hierarchy (what draws attention first, spacing patterns)
 
 If images show relationships (sequential screens, different states, related functionality), mention it naturally within the descriptions.
 

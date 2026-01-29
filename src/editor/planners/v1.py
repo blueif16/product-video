@@ -17,8 +17,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 
-from config import Config
-from tools.editor_tools import create_clip_task, finalize_edit_plan
+from src.config import Config
+from src.tools.editor_tools import create_clip_task, finalize_edit_plan
 
 
 # ─────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ def edit_planner_node(state: dict) -> dict:
     Reads context from state, creates clip_tasks in DB,
     returns updated state with task IDs.
     """
-    from db.supabase_client import get_client
+    from ...db.supabase_client import get_client
     from langchain_core.messages import HumanMessage
     
     print("\n🎬 Edit Planner starting...")

@@ -14,7 +14,7 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from tools.image_analyzer import analyze_image, analyze_image_batch
+from src.tools.image_analyzer import analyze_image, analyze_image_batch
 
 
 def test_single_with_note():

@@ -63,10 +63,12 @@ def extract_and_record_rag_queries(
 
 
 class RAGRecorder:
-    """单例记录器，按 video_project_id 分组存储 RAG 查询"""
+    """单例记录器，按 video_project_id 分组存储 RAG 查询和验证记录"""
 
     def __init__(self):
         self._cache: Dict[str, List[dict]] = {}
+        # clip_id -> validation history
+        self._validations: Dict[str, List[dict]] = {}
 
     def record(
         self,
@@ -89,6 +91,22 @@ class RAGRecorder:
             "match_count": match_count,
             "results": results
         })
+
+    def get_queries_for_clip(
+        self, video_project_id: str, clip_id: str
+    ) -> list:
+        """获取特定 clip 的所有查询"""
+        queries = self._cache.get(video_project_id, [])
+        return [
+            {
+                "tool_name": q["tool_name"],
+                "query": q["query"],
+                "timestamp": q["timestamp"],
+                "match_count": q["match_count"],
+                "results": q.get("results")
+            }
+            for q in queries if q["clip_id"] == clip_id
+        ]
 
     def get_metadata(self, video_project_id: str) -> dict:
         """获取 metadata 格式的记录"""
@@ -118,6 +136,49 @@ class RAGRecorder:
     def clear(self, video_project_id: str):
         """清除缓存"""
         self._cache.pop(video_project_id, None)
+
+    def record_validation(
+        self,
+        clip_id: str,
+        validation_results: dict,
+        passed: bool
+    ):
+        """记录一次验证结果"""
+        if clip_id not in self._validations:
+            self._validations[clip_id] = []
+
+        self._validations[clip_id].append({
+            "timestamp": datetime.now().isoformat(),
+            "passed": passed,
+            "results": validation_results
+        })
+
+    def get_validation_history(self, clip_id: str) -> list:
+        """获取特定 clip 的验证历史"""
+        return self._validations.get(clip_id, [])
+
+    def get_validation_metadata(self, clip_id: str) -> dict:
+        """获取验证历史的元数据格式"""
+        history = self._validations.get(clip_id, [])
+
+        if not history:
+            return {
+                "validation_history": [],
+                "total_validations": 0,
+                "final_status": "not_validated"
+            }
+
+        final = history[-1]
+        return {
+            "validation_history": history,
+            "total_validations": len(history),
+            "final_status": "passed" if final["passed"] else "failed",
+            "final_timestamp": final["timestamp"]
+        }
+
+    def clear_validations(self, clip_id: str):
+        """清除特定 clip 的验证历史"""
+        self._validations.pop(clip_id, None)
 
 
 # 全局单例

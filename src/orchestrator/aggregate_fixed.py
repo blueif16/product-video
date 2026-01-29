@@ -3,10 +3,10 @@ Aggregate node: Collect results, update status to 'aggregated'.
 """
 from langchain_core.messages import AIMessage
 
-from config import Config
-from db.supabase_client import get_supabase, update_video_project_status
-from .state import PipelineState
-from .session import get_session
+from src.config import Config
+from src.db.supabase_client import get_supabase, update_video_project_status
+from src.orchestrator.state import PipelineState
+from src.orchestrator.session import get_session
 
 
 def aggregate_node(state: PipelineState) -> dict:

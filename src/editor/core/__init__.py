@@ -2,7 +2,7 @@
 Editor Core - Shared components that don't change between versions.
 """
 
-from .state import (
+from src.editor.core.state import (
     EditorState,
     ClipSpec,
     VideoSpec,
@@ -18,9 +18,9 @@ from .state import (
     TextPositionSpec,
     TransitionSpec,
 )
-from .loader import load_editor_state, create_test_state, load_or_create_state
-from .assembler import edit_assembler_node, assemble_video_spec
-from .music_planner import (
+from src.editor.core.loader import load_editor_state, create_test_state, load_or_create_state
+from src.editor.core.assembler import edit_assembler_node, assemble_video_spec
+from src.editor.core.music_planner import (
     music_planner_node,
     analyze_timeline_for_music,
     extract_hit_points,

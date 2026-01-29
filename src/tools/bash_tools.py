@@ -4,7 +4,7 @@ Shared tools available to agents.
 from langchain_core.tools import tool
 import subprocess
 from pathlib import Path
-from config import Config
+from src.config import Config
 
 
 @tool

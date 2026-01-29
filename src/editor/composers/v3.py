@@ -1,14 +1,8 @@
 """
-Clip Composer Agent V2
+Clip Composer Agent V3
 
-Builds layer specs from creative direction.
-Reads composer_notes (which contain full style decisions from planner).
-
-POSITIONING SYSTEM V2:
-- Coordinates {x, y} are canvas percentages (0-100)
-- Canvas: 1920×1080px
-- "anchor" determines what part of element sits at coordinate
-- Default: anchor:"center" (element center at x,y)
+Reads design_system + composer_notes to build layers.
+Design system provides visual consistency, composer_notes provide content strategy.
 """
 from typing import Annotated
 from typing_extensions import TypedDict
@@ -39,15 +33,25 @@ CLIP_COMPOSER_SYSTEM_PROMPT = """You are a motion graphics composer. Your job: t
 **Asset:** {asset_path}
 **Duration:** {duration_s}s ({duration_frames} frames @ 30fps)
 
-**Creative Direction:**
+---
+
+## DESIGN SYSTEM (UNIFIED VISUAL STYLE)
+
+{design_system_text}
+
+---
+
+## COMPOSER NOTES (THIS CLIP'S CONTENT STRATEGY)
+
 {composer_notes}
 
 ---
 
 ## CORE PRINCIPLE
 
-**Creative Direction = WHAT to communicate (text, mood, energy)**
-**RAG Knowledge Base = HOW to execute (positions, spacing, timing, contrast)**
+**Design System = Colors, typography, animation feel (WHAT to use)**
+**Composer Notes = Content strategy, energy, asset usage (WHAT to say)**
+**RAG Knowledge Base = Layout, spacing, timing, contrast (HOW to execute)**
 
 You MUST query RAG for execution details. NEVER invent spacing numbers, contrast values, or layout zones from imagination.
 
@@ -109,11 +113,15 @@ query_execution_patterns(query, match_count)
 **If first query doesn't give you numbers, QUERY AGAIN with more specific terms.**
 **Your knowledge GROWS with each query. Query 3-5 times minimum.**
 
-### Step 2: Draft with RAG Numbers
+### Step 2: Draft with Design System + RAG Numbers
 
 ```
 draft_clip_spec(layers_json)
 ```
+
+- Colors/fonts from design_system
+- Content/energy from composer_notes
+- Layout/spacing from RAG
 
 Use ONLY numbers and values from RAG. If RAG says "text zone x:12-48%", use x:12-48%, not x:50.
 
@@ -148,8 +156,9 @@ submit_clip_spec(notes="...")
 
 ---
 
-## QUALITY = RAG COMPLIANCE
+## QUALITY = DESIGN SYSTEM + RAG COMPLIANCE
 
+- **Colors/Fonts:** Design system tells you exact values. Use them.
 - **Spacing:** RAG tells you exact zones. Follow them.
 - **Contrast:** RAG tells you exact hex codes. Use them.
 - **Headlines:** RAG tells you max-width formula. Calculate it.
@@ -216,6 +225,16 @@ def compose_single_clip_node(state: dict) -> dict:
             print(f"   ⚠️  Clip {clip_id} not found")
             return {}
 
+        # Read design_system
+        project = client.table("video_projects").select("design_system_text").eq(
+            "id", video_project_id
+        ).single().execute()
+        design_system_text = project.data.get("design_system_text", "")
+
+        if not design_system_text:
+            print(f"   ⚠️  No design_system found for project {video_project_id}")
+            design_system_text = "No design system provided. Use default styling."
+
         asset_src = resolve_asset_src(task.get("asset_url"), task.get("asset_path"))
         print(f"\n   [{clip_id[:8]}] {asset_src}")
 
@@ -227,6 +246,7 @@ def compose_single_clip_node(state: dict) -> dict:
             asset_path=asset_src,
             duration_s=task["duration_s"],
             duration_frames=duration_frames,
+            design_system_text=design_system_text,
             composer_notes=task["composer_notes"],
         )
 
@@ -294,7 +314,7 @@ def compose_all_clips_node(state: dict) -> dict:
         print("   ✓ No pending clip tasks")
         return {}
 
-    print(f"\n🎨 Composing {len(tasks)} clips...")
+    print(f"\n🎨 Composing {len(tasks)} clips (V3)...")
 
     success_count = 0
     failed_count = 0

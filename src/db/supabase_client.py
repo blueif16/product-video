@@ -12,7 +12,7 @@ Cloud-First Architecture:
 - asset_path (local) is kept for fallback/debugging
 """
 from supabase import create_client, Client
-from config import Config
+from src.config import Config
 from typing import Optional
 
 

@@ -5,8 +5,8 @@ Executes capture tasks: sets up environment, navigates the app, captures
 screenshots/recordings, validates results. Retries with different strategies if needed.
 """
 from langgraph.prebuilt import create_react_agent
-from config import get_model, Config
-from tools import CAPTURER_TOOLS, INTERACTION_BACKEND
+from src.config import get_model, Config
+from src.tools import CAPTURER_TOOLS, INTERACTION_BACKEND
 
 
 CAPTURER_SYSTEM_PROMPT = f"""You are an expert at capturing iOS app screenshots and recordings for marketing videos.

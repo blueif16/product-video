@@ -14,7 +14,7 @@ Usage:
     from src.main import run_from_string
     result = run_from_string("My app FocusFlow is... ~/Code/FocusFlow.xcodeproj")
 """
-from .main import main, run_from_string
-from .orchestrator import build_pipeline, run_pipeline_interactive
+from src.main import main, run_from_string
+from src.orchestrator import build_pipeline, run_pipeline
 
-__all__ = ["main", "run_from_string", "build_pipeline", "run_pipeline_interactive"]
+__all__ = ["main", "run_from_string", "build_pipeline", "run_pipeline"]

@@ -7,8 +7,8 @@ from typing import Annotated, Optional, Literal
 from typing_extensions import TypedDict
 from langgraph.graph.message import add_messages
 
-from orchestrator.state import AppManifest
-from editor.core.state import ClipSpec, VideoSpec
+from src.orchestrator.state import AppManifest
+from src.editor.core.state import ClipSpec, VideoSpec
 
 
 class UnifiedPipelineState(TypedDict):
